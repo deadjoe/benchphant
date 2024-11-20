@@ -1,6 +1,6 @@
 # BenchPhant
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/deadjoe/benchphant)](https://goreportcard.com/report/github.com/deadjoe/benchphant)
+[![Go Report Card](https://goreportcard.com/badge/github.com/deadjoe/benchphant?v=2)](https://goreportcard.com/report/github.com/deadjoe/benchphant)
 [![GoDoc](https://pkg.go.dev/badge/github.com/deadjoe/benchphant)](https://pkg.go.dev/github.com/deadjoe/benchphant)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Build Status](https://github.com/deadjoe/benchphant/actions/workflows/test.yml/badge.svg)](https://github.com/deadjoe/benchphant/actions)
