@@ -23,6 +23,136 @@ func NewTransactionExecutor(db *sql.DB, config *Config) *TransactionExecutor {
 	}
 }
 
+// getWarehouseInfo retrieves warehouse tax rate
+func (e *TransactionExecutor) getWarehouseInfo(ctx context.Context, tx *sql.Tx, wID int) (float64, error) {
+	var wTax float64
+	err := tx.QueryRowContext(ctx,
+		"SELECT w_tax FROM warehouse WHERE w_id = ?",
+		wID).Scan(&wTax)
+	if err != nil {
+		return 0, fmt.Errorf("get warehouse tax: %w", err)
+	}
+	return wTax, nil
+}
+
+// getDistrictInfo retrieves district tax rate and next order ID
+func (e *TransactionExecutor) getDistrictInfo(ctx context.Context, tx *sql.Tx, wID, dID int) (float64, int, error) {
+	var dTax float64
+	var dNextOID int
+	err := tx.QueryRowContext(ctx,
+		"SELECT d_tax, d_next_o_id FROM district WHERE d_w_id = ? AND d_id = ?",
+		wID, dID).Scan(&dTax, &dNextOID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("get district info: %w", err)
+	}
+	return dTax, dNextOID, nil
+}
+
+// updateDistrictNextOrderID updates the next order ID for a district
+func (e *TransactionExecutor) updateDistrictNextOrderID(ctx context.Context, tx *sql.Tx, wID, dID, nextOID int) error {
+	_, err := tx.ExecContext(ctx,
+		"UPDATE district SET d_next_o_id = ? WHERE d_w_id = ? AND d_id = ?",
+		nextOID+1, wID, dID)
+	if err != nil {
+		return fmt.Errorf("update district next order ID: %w", err)
+	}
+	return nil
+}
+
+// getCustomerInfo retrieves customer discount rate and other info
+func (e *TransactionExecutor) getCustomerInfo(ctx context.Context, tx *sql.Tx, wID, dID, cID int) (float64, string, string, error) {
+	var cDiscount float64
+	var cLast, cCredit string
+	err := tx.QueryRowContext(ctx,
+		"SELECT c_discount, c_last, c_credit FROM customer WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
+		wID, dID, cID).Scan(&cDiscount, &cLast, &cCredit)
+	if err != nil {
+		return 0, "", "", fmt.Errorf("get customer info: %w", err)
+	}
+	return cDiscount, cLast, cCredit, nil
+}
+
+// createOrder creates a new order entry
+func (e *TransactionExecutor) createOrder(ctx context.Context, tx *sql.Tx, orderID, dID, wID, cID int, itemCount int, allLocal int, now time.Time) error {
+	_, err := tx.ExecContext(ctx,
+		"INSERT INTO orders (o_id, o_d_id, o_w_id, o_c_id, o_entry_d, o_ol_cnt, o_all_local) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		orderID, dID, wID, cID, now, itemCount, allLocal)
+	if err != nil {
+		return fmt.Errorf("create order: %w", err)
+	}
+	return nil
+}
+
+// createNewOrderEntry creates a new order entry in the new_order table
+func (e *TransactionExecutor) createNewOrderEntry(ctx context.Context, tx *sql.Tx, orderID, dID, wID int) error {
+	_, err := tx.ExecContext(ctx,
+		"INSERT INTO new_order (no_o_id, no_d_id, no_w_id) VALUES (?, ?, ?)",
+		orderID, dID, wID)
+	if err != nil {
+		return fmt.Errorf("create new order entry: %w", err)
+	}
+	return nil
+}
+
+// processOrderLine processes a single order line
+func (e *TransactionExecutor) processOrderLine(ctx context.Context, tx *sql.Tx, orderID, dID, wID int, lineNum int,
+	itemID int, supplyW int, qty int) (float64, error) {
+	// Get item price and name
+	var iPrice float64
+	var iName string
+	err := tx.QueryRowContext(ctx,
+		"SELECT i_price, i_name FROM item WHERE i_id = ?",
+		itemID).Scan(&iPrice, &iName)
+	if err != nil {
+		return 0, fmt.Errorf("get item info: %w", err)
+	}
+
+	// Get and update stock
+	var sQuantity int
+	var sDistInfo string
+	var sYtd int
+	var sOrderCnt int
+	var sRemoteCnt int
+
+	err = tx.QueryRowContext(ctx,
+		"SELECT s_quantity, s_dist_01, s_ytd, s_order_cnt, s_remote_cnt FROM stock WHERE s_i_id = ? AND s_w_id = ?",
+		itemID, supplyW).Scan(&sQuantity, &sDistInfo, &sYtd, &sOrderCnt, &sRemoteCnt)
+	if err != nil {
+		return 0, fmt.Errorf("get stock info: %w", err)
+	}
+
+	// Update stock
+	newQuantity := sQuantity - qty
+	if newQuantity < 10 {
+		newQuantity += 91
+	}
+
+	newRemoteCnt := sRemoteCnt
+	if supplyW != wID {
+		newRemoteCnt++
+	}
+
+	_, err = tx.ExecContext(ctx,
+		"UPDATE stock SET s_quantity = ?, s_ytd = ?, s_order_cnt = ?, s_remote_cnt = ? WHERE s_i_id = ? AND s_w_id = ?",
+		newQuantity, sYtd+qty, sOrderCnt+1, newRemoteCnt, itemID, supplyW)
+	if err != nil {
+		return 0, fmt.Errorf("update stock: %w", err)
+	}
+
+	// Calculate amount
+	amount := float64(qty) * iPrice
+
+	// Create order line
+	_, err = tx.ExecContext(ctx,
+		"INSERT INTO order_line (ol_o_id, ol_d_id, ol_w_id, ol_number, ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_dist_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		orderID, dID, wID, lineNum, itemID, supplyW, qty, amount, sDistInfo)
+	if err != nil {
+		return 0, fmt.Errorf("create order line: %w", err)
+	}
+
+	return amount, nil
+}
+
 // ExecuteNewOrder executes a New-Order transaction
 func (e *TransactionExecutor) ExecuteNewOrder(ctx context.Context, tx *NewOrder) error {
 	// Start transaction
@@ -32,116 +162,46 @@ func (e *TransactionExecutor) ExecuteNewOrder(ctx context.Context, tx *NewOrder)
 	}
 	defer dbTx.Rollback()
 
-	// Get warehouse tax rate
-	var wTax float64
-	err = dbTx.QueryRowContext(ctx,
-		"SELECT w_tax FROM warehouse WHERE w_id = ?",
-		tx.wID).Scan(&wTax)
+	// Get warehouse and district info
+	wTax, err := e.getWarehouseInfo(ctx, dbTx, tx.wID)
 	if err != nil {
-		return fmt.Errorf("get warehouse tax: %w", err)
+		return err
 	}
 
-	// Get district tax rate and next order ID
-	var dTax float64
-	var dNextOID int
-	err = dbTx.QueryRowContext(ctx,
-		"SELECT d_tax, d_next_o_id FROM district WHERE d_w_id = ? AND d_id = ?",
-		tx.wID, tx.dID).Scan(&dTax, &dNextOID)
+	dTax, dNextOID, err := e.getDistrictInfo(ctx, dbTx, tx.wID, tx.dID)
 	if err != nil {
-		return fmt.Errorf("get district info: %w", err)
+		return err
 	}
 
 	// Update district next order ID
-	_, err = dbTx.ExecContext(ctx,
-		"UPDATE district SET d_next_o_id = ? WHERE d_w_id = ? AND d_id = ?",
-		dNextOID+1, tx.wID, tx.dID)
-	if err != nil {
-		return fmt.Errorf("update district next order ID: %w", err)
+	if err := e.updateDistrictNextOrderID(ctx, dbTx, tx.wID, tx.dID, dNextOID); err != nil {
+		return err
 	}
 
-	// Get customer discount rate
-	var cDiscount float64
-	var cLast, cCredit string
-	err = dbTx.QueryRowContext(ctx,
-		"SELECT c_discount, c_last, c_credit FROM customer WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
-		tx.wID, tx.dID, tx.cID).Scan(&cDiscount, &cLast, &cCredit)
+	// Get customer info
+	cDiscount, _, _, err := e.getCustomerInfo(ctx, dbTx, tx.wID, tx.dID, tx.cID)
 	if err != nil {
-		return fmt.Errorf("get customer info: %w", err)
+		return err
 	}
 
-	// Create new order
+	// Create order and new order entry
 	now := time.Now()
-	_, err = dbTx.ExecContext(ctx,
-		"INSERT INTO orders (o_id, o_d_id, o_w_id, o_c_id, o_entry_d, o_ol_cnt, o_all_local) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		dNextOID, tx.dID, tx.wID, tx.cID, now, len(tx.itemIDs), tx.allLocal)
-	if err != nil {
-		return fmt.Errorf("create order: %w", err)
+	if err := e.createOrder(ctx, dbTx, dNextOID, tx.dID, tx.wID, tx.cID, len(tx.itemIDs), tx.allLocal, now); err != nil {
+		return err
 	}
 
-	// Create new order entry
-	_, err = dbTx.ExecContext(ctx,
-		"INSERT INTO new_order (no_o_id, no_d_id, no_w_id) VALUES (?, ?, ?)",
-		dNextOID, tx.dID, tx.wID)
-	if err != nil {
-		return fmt.Errorf("create new order entry: %w", err)
+	if err := e.createNewOrderEntry(ctx, dbTx, dNextOID, tx.dID, tx.wID); err != nil {
+		return err
 	}
 
 	// Process order lines
 	var totalAmount float64
 	for i, itemID := range tx.itemIDs {
-		// Get item price and name
-		var iPrice float64
-		var iName string
-		err = dbTx.QueryRowContext(ctx,
-			"SELECT i_price, i_name FROM item WHERE i_id = ?",
-			itemID).Scan(&iPrice, &iName)
+		amount, err := e.processOrderLine(ctx, dbTx, dNextOID, tx.dID, tx.wID, i+1, itemID, tx.supplyWs[i], tx.qtys[i])
 		if err != nil {
-			return fmt.Errorf("get item info: %w", err)
+			return err
 		}
-
-		// Get stock info and update
-		var sQuantity int
-		var sDistInfo string
-		var sYtd int
-		var sOrderCnt int
-		var sRemoteCnt int
-
-		err = dbTx.QueryRowContext(ctx,
-			"SELECT s_quantity, s_dist_01, s_ytd, s_order_cnt, s_remote_cnt FROM stock WHERE s_i_id = ? AND s_w_id = ?",
-			itemID, tx.supplyWs[i]).Scan(&sQuantity, &sDistInfo, &sYtd, &sOrderCnt, &sRemoteCnt)
-		if err != nil {
-			return fmt.Errorf("get stock info: %w", err)
-		}
-
-		// Update stock
-		newQuantity := sQuantity - tx.qtys[i]
-		if newQuantity < 10 {
-			newQuantity += 91
-		}
-
-		newRemoteCnt := sRemoteCnt
-		if tx.supplyWs[i] != tx.wID {
-			newRemoteCnt++
-		}
-
-		_, err = dbTx.ExecContext(ctx,
-			"UPDATE stock SET s_quantity = ?, s_ytd = ?, s_order_cnt = ?, s_remote_cnt = ? WHERE s_i_id = ? AND s_w_id = ?",
-			newQuantity, sYtd+tx.qtys[i], sOrderCnt+1, newRemoteCnt, itemID, tx.supplyWs[i])
-		if err != nil {
-			return fmt.Errorf("update stock: %w", err)
-		}
-
-		// Calculate amount
-		amount := float64(tx.qtys[i]) * iPrice
 		totalAmount += amount
-
-		// Create order line
-		_, err = dbTx.ExecContext(ctx,
-			"INSERT INTO order_line (ol_o_id, ol_d_id, ol_w_id, ol_number, ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_dist_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			dNextOID, tx.dID, tx.wID, i+1, itemID, tx.supplyWs[i], tx.qtys[i], amount, sDistInfo)
-		if err != nil {
-			return fmt.Errorf("create order line: %w", err)
-		}
 	}
 
 	// Calculate total amount with tax and discount

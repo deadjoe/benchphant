@@ -167,76 +167,106 @@ func TestRunner(t *testing.T) {
 	})
 }
 
-func TestTransactionExecutor(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
-	defer db.Close()
+type testTransaction struct {
+	name     string
+	executor func(context.Context) error
+}
 
-	config := &Config{
-		Warehouses: 1,
-		Terminals:  1,
+func runConcurrentTransactions(t *testing.T, ctx context.Context, transactions []testTransaction) {
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(transactions))
+
+	for _, tx := range transactions {
+		wg.Add(1)
+		go func(tx testTransaction) {
+			defer wg.Done()
+			if err := tx.executor(ctx); err != nil {
+				t.Logf("Error executing %s: %v", tx.name, err)
+				errChan <- err
+			}
+		}(tx)
 	}
 
-	ctx := context.Background()
-	require.NoError(t, CreateSchema(ctx, db))
-	loader := NewLoader(db, config)
-	require.NoError(t, loader.Load(ctx))
+	wg.Wait()
+	close(errChan)
 
-	executor := NewTransactionExecutor(db, config)
+	for err := range errChan {
+		assert.NoError(t, err)
+	}
+}
 
-	t.Run("NewOrder", func(t *testing.T) {
-		tx := &NewOrder{
-			db:       db,
-			wID:      1,
-			dID:      1,
-			cID:      1,
-			itemIDs:  []int{1, 2},
-			supplyWs: []int{1, 1},
-			qtys:     []int{1, 1},
-			allLocal: true,
-		}
-		assert.NoError(t, executor.ExecuteNewOrder(ctx, tx))
-	})
+func createNewOrderTx(executor *TransactionExecutor) testTransaction {
+	return testTransaction{
+		name: "NewOrder",
+		executor: func(ctx context.Context) error {
+			tx := &NewOrder{
+				wID:      1,
+				dID:      1,
+				cID:      1,
+				itemIDs:  []int{1, 2},
+				supplyWs: []int{1, 1},
+				qtys:     []int{1, 1},
+				allLocal: true,
+			}
+			return executor.ExecuteNewOrder(ctx, tx)
+		},
+	}
+}
 
-	t.Run("Payment", func(t *testing.T) {
-		tx := &Payment{
-			db:     db,
-			wID:    1,
-			dID:    1,
-			cID:    1,
-			amount: 100.0,
-		}
-		assert.NoError(t, executor.ExecutePayment(ctx, tx))
-	})
+func createPaymentTx(executor *TransactionExecutor) testTransaction {
+	return testTransaction{
+		name: "Payment",
+		executor: func(ctx context.Context) error {
+			tx := &Payment{
+				wID:    1,
+				dID:    1,
+				cID:    1,
+				amount: 100.0,
+			}
+			return executor.ExecutePayment(ctx, tx)
+		},
+	}
+}
 
-	t.Run("OrderStatus", func(t *testing.T) {
-		tx := &OrderStatus{
-			db:  db,
-			wID: 1,
-			dID: 1,
-			cID: 1,
-		}
-		assert.NoError(t, executor.ExecuteOrderStatus(ctx, tx))
-	})
+func createOrderStatusTx(executor *TransactionExecutor) testTransaction {
+	return testTransaction{
+		name: "OrderStatus",
+		executor: func(ctx context.Context) error {
+			tx := &OrderStatus{
+				wID: 1,
+				dID: 1,
+				cID: 1,
+			}
+			return executor.ExecuteOrderStatus(ctx, tx)
+		},
+	}
+}
 
-	t.Run("Delivery", func(t *testing.T) {
-		tx := &Delivery{
-			db:        db,
-			wID:       1,
-			carrierID: 1,
-		}
-		assert.NoError(t, executor.ExecuteDelivery(ctx, tx))
-	})
+func createDeliveryTx(executor *TransactionExecutor) testTransaction {
+	return testTransaction{
+		name: "Delivery",
+		executor: func(ctx context.Context) error {
+			tx := &Delivery{
+				wID:       1,
+				carrierID: 1,
+			}
+			return executor.ExecuteDelivery(ctx, tx)
+		},
+	}
+}
 
-	t.Run("StockLevel", func(t *testing.T) {
-		tx := &StockLevel{
-			db:        db,
-			wID:       1,
-			dID:       1,
-			threshold: 10,
-		}
-		assert.NoError(t, executor.ExecuteStockLevel(ctx, tx))
-	})
+func createStockLevelTx(executor *TransactionExecutor) testTransaction {
+	return testTransaction{
+		name: "StockLevel",
+		executor: func(ctx context.Context) error {
+			tx := &StockLevel{
+				wID:       1,
+				dID:       1,
+				threshold: 10,
+			}
+			return executor.ExecuteStockLevel(ctx, tx)
+		},
+	}
 }
 
 func TestConcurrentTransactions(t *testing.T) {
@@ -258,105 +288,98 @@ func TestConcurrentTransactions(t *testing.T) {
 
 	// Test concurrent new order transactions
 	t.Run("ConcurrentNewOrders", func(t *testing.T) {
-		var wg sync.WaitGroup
-		errChan := make(chan error, 10)
-
-		for i := 0; i < 10; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				tx := &NewOrder{
-					db:       db,
-					wID:      1,
-					dID:      1,
-					cID:      1,
-					itemIDs:  []int{1, 2},
-					supplyWs: []int{1, 1},
-					qtys:     []int{1, 1},
-					allLocal: true,
-				}
-				if err := executor.ExecuteNewOrder(ctx, tx); err != nil {
-					errChan <- err
-				}
-			}()
+		transactions := make([]testTransaction, 10)
+		for i := range transactions {
+			transactions[i] = createNewOrderTx(executor)
 		}
-
-		wg.Wait()
-		close(errChan)
-
-		for err := range errChan {
-			assert.NoError(t, err)
-		}
+		runConcurrentTransactions(t, ctx, transactions)
 	})
 
 	// Test concurrent mixed transactions
 	t.Run("ConcurrentMixed", func(t *testing.T) {
-		var wg sync.WaitGroup
-		errChan := make(chan error, 10)
-
-		for i := 0; i < 10; i++ {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				var err error
-				switch i % 5 {
-				case 0:
-					tx := &NewOrder{
-						db:       db,
-						wID:      1,
-						dID:      1,
-						cID:      1,
-						itemIDs:  []int{1, 2},
-						supplyWs: []int{1, 1},
-						qtys:     []int{1, 1},
-						allLocal: true,
-					}
-					err = executor.ExecuteNewOrder(ctx, tx)
-				case 1:
-					tx := &Payment{
-						db:     db,
-						wID:    1,
-						dID:    1,
-						cID:    1,
-						amount: 100.0,
-					}
-					err = executor.ExecutePayment(ctx, tx)
-				case 2:
-					tx := &OrderStatus{
-						db:  db,
-						wID: 1,
-						dID: 1,
-						cID: 1,
-					}
-					err = executor.ExecuteOrderStatus(ctx, tx)
-				case 3:
-					tx := &Delivery{
-						db:        db,
-						wID:       1,
-						carrierID: 1,
-					}
-					err = executor.ExecuteDelivery(ctx, tx)
-				case 4:
-					tx := &StockLevel{
-						db:        db,
-						wID:       1,
-						dID:       1,
-						threshold: 10,
-					}
-					err = executor.ExecuteStockLevel(ctx, tx)
-				}
-				if err != nil {
-					errChan <- err
-				}
-			}(i)
+		transactions := make([]testTransaction, 10)
+		for i := range transactions {
+			switch i % 5 {
+			case 0:
+				transactions[i] = createNewOrderTx(executor)
+			case 1:
+				transactions[i] = createPaymentTx(executor)
+			case 2:
+				transactions[i] = createOrderStatusTx(executor)
+			case 3:
+				transactions[i] = createDeliveryTx(executor)
+			case 4:
+				transactions[i] = createStockLevelTx(executor)
+			}
 		}
+		runConcurrentTransactions(t, ctx, transactions)
+	})
+}
 
-		wg.Wait()
-		close(errChan)
+func TestTransactionExecutor(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
 
-		for err := range errChan {
-			assert.NoError(t, err)
+	config := &Config{
+		Warehouses: 1,
+		Terminals:  1,
+	}
+
+	ctx := context.Background()
+	require.NoError(t, CreateSchema(ctx, db))
+	loader := NewLoader(db, config)
+	require.NoError(t, loader.Load(ctx))
+
+	executor := NewTransactionExecutor(db, config)
+
+	t.Run("NewOrder", func(t *testing.T) {
+		tx := &NewOrder{
+			wID:      1,
+			dID:      1,
+			cID:      1,
+			itemIDs:  []int{1, 2},
+			supplyWs: []int{1, 1},
+			qtys:     []int{1, 1},
+			allLocal: true,
 		}
+		assert.NoError(t, executor.ExecuteNewOrder(ctx, tx))
+	})
+
+	t.Run("Payment", func(t *testing.T) {
+		tx := &Payment{
+			wID:    1,
+			dID:    1,
+			cID:    1,
+			amount: 100.0,
+		}
+		assert.NoError(t, executor.ExecutePayment(ctx, tx))
+	})
+
+	t.Run("OrderStatus", func(t *testing.T) {
+		tx := &OrderStatus{
+			wID: 1,
+			dID: 1,
+			cID: 1,
+		}
+		assert.NoError(t, executor.ExecuteOrderStatus(ctx, tx))
+	})
+
+	t.Run("Delivery", func(t *testing.T) {
+		tx := &Delivery{
+			wID:       1,
+			carrierID: 1,
+		}
+		assert.NoError(t, executor.ExecuteDelivery(ctx, tx))
+	})
+
+	t.Run("StockLevel", func(t *testing.T) {
+		tx := &StockLevel{
+			wID:       1,
+			dID:       1,
+			threshold: 10,
+		}
+		assert.NoError(t, executor.ExecuteStockLevel(ctx, tx))
 	})
 }
 
@@ -379,7 +402,6 @@ func TestBoundaryConditions(t *testing.T) {
 
 	t.Run("MaxValues", func(t *testing.T) {
 		tx := &NewOrder{
-			db:       db,
 			wID:      1,
 			dID:      10,              // Max district ID
 			cID:      3000,            // Max customer ID
@@ -398,7 +420,6 @@ func TestBoundaryConditions(t *testing.T) {
 
 	t.Run("MinValues", func(t *testing.T) {
 		tx := &NewOrder{
-			db:       db,
 			wID:      1,
 			dID:      1,
 			cID:      1,
@@ -430,7 +451,6 @@ func TestErrorHandling(t *testing.T) {
 
 	t.Run("InvalidWarehouse", func(t *testing.T) {
 		tx := &NewOrder{
-			db:       db,
 			wID:      999, // Non-existent warehouse
 			dID:      1,
 			cID:      1,
@@ -444,7 +464,6 @@ func TestErrorHandling(t *testing.T) {
 
 	t.Run("InvalidItem", func(t *testing.T) {
 		tx := &NewOrder{
-			db:       db,
 			wID:      1,
 			dID:      1,
 			cID:      1,
@@ -458,7 +477,6 @@ func TestErrorHandling(t *testing.T) {
 
 	t.Run("InvalidCustomer", func(t *testing.T) {
 		tx := &Payment{
-			db:     db,
 			wID:    1,
 			dID:    1,
 			cID:    99999, // Non-existent customer
@@ -469,7 +487,6 @@ func TestErrorHandling(t *testing.T) {
 
 	t.Run("NegativeAmount", func(t *testing.T) {
 		tx := &Payment{
-			db:     db,
 			wID:    1,
 			dID:    1,
 			cID:    1,

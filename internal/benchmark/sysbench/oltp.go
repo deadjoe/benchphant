@@ -294,22 +294,50 @@ func (t *OLTPTest) executeReadWriteTransaction(ctx context.Context) error {
 	if !t.config.SkipTrx {
 		tx, err := t.db.BeginTx(ctx, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("begin transaction failed: %w", err)
 		}
 		defer tx.Rollback()
 	}
 
-	// Point selects
+	// Execute different types of queries
+	if err := t.executePointSelects(ctx); err != nil {
+		return err
+	}
+
+	if err := t.executeRangeSum(ctx); err != nil {
+		return err
+	}
+
+	if err := t.executeIndexUpdate(ctx); err != nil {
+		return err
+	}
+
+	if err := t.executeNonIndexUpdate(ctx); err != nil {
+		return err
+	}
+
+	if !t.config.SkipTrx {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit transaction failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (t *OLTPTest) executePointSelects(ctx context.Context) error {
 	for i := 0; i < t.config.PointSelects; i++ {
 		tableNum := rand.Intn(t.config.TablesCount) + 1
 		id := rand.Intn(t.config.TableSize) + 1
 		query := fmt.Sprintf("SELECT c FROM sbtest%d WHERE id = ?", tableNum)
 		if _, err := t.db.QueryContext(ctx, query, id); err != nil {
-			return err
+			return fmt.Errorf("point select failed: %w", err)
 		}
 	}
+	return nil
+}
 
-	// Range sum
+func (t *OLTPTest) executeRangeSum(ctx context.Context) error {
 	tableNum := rand.Intn(t.config.TablesCount) + 1
 	id := rand.Intn(t.config.TableSize-t.config.RangeSize) + 1
 	query := fmt.Sprintf(`
@@ -317,39 +345,30 @@ func (t *OLTPTest) executeReadWriteTransaction(ctx context.Context) error {
 		WHERE id BETWEEN ? AND ?`,
 		tableNum)
 	if _, err := t.db.QueryContext(ctx, query, id, id+t.config.RangeSize); err != nil {
-		return err
-	}
-
-	// Update index
-	tableNum = rand.Intn(t.config.TablesCount) + 1
-	id = rand.Intn(t.config.TableSize) + 1
-	query = fmt.Sprintf("UPDATE sbtest%d SET k=k+1 WHERE id=?", tableNum)
-	if _, err := t.db.ExecContext(ctx, query, id); err != nil {
-		return err
-	}
-
-	// Update non-index
-	tableNum = rand.Intn(t.config.TablesCount) + 1
-	id = rand.Intn(t.config.TableSize) + 1
-	c := randomString(120)
-	query = fmt.Sprintf("UPDATE sbtest%d SET c=? WHERE id=?", tableNum)
-	if _, err := t.db.ExecContext(ctx, query, c, id); err != nil {
-		return err
-	}
-
-	if !t.config.SkipTrx {
-		return nil
+		return fmt.Errorf("range sum failed: %w", err)
 	}
 	return nil
 }
 
-func randomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, length)
-	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+func (t *OLTPTest) executeIndexUpdate(ctx context.Context) error {
+	tableNum := rand.Intn(t.config.TablesCount) + 1
+	id := rand.Intn(t.config.TableSize) + 1
+	query := fmt.Sprintf("UPDATE sbtest%d SET k=k+1 WHERE id=?", tableNum)
+	if _, err := t.db.ExecContext(ctx, query, id); err != nil {
+		return fmt.Errorf("index update failed: %w", err)
 	}
-	return string(b)
+	return nil
+}
+
+func (t *OLTPTest) executeNonIndexUpdate(ctx context.Context) error {
+	tableNum := rand.Intn(t.config.TablesCount) + 1
+	id := rand.Intn(t.config.TableSize) + 1
+	c := randomString(120)
+	query := fmt.Sprintf("UPDATE sbtest%d SET c=? WHERE id=?", tableNum)
+	if _, err := t.db.ExecContext(ctx, query, c, id); err != nil {
+		return fmt.Errorf("non-index update failed: %w", err)
+	}
+	return nil
 }
 
 func (t *OLTPTest) executeWriteOnlyTransaction(ctx context.Context) error {
@@ -570,4 +589,13 @@ func (t *OLTPTest) executeNonIndexScanTransaction(ctx context.Context) error {
 		return nil
 	}
 	return nil
+}
+
+func randomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }

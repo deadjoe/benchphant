@@ -7,21 +7,39 @@ import (
 	"time"
 )
 
-func TestFileStorage(t *testing.T) {
-	// Create temporary directory for test data
+// testHelper contains common test utilities and assertions
+type testHelper struct {
+	t       *testing.T
+	tmpDir  string
+	storage *FileStorage
+}
+
+// newTestHelper creates a new test helper with temporary directory
+func newTestHelper(t *testing.T) *testHelper {
 	tmpDir, err := os.MkdirTemp("", "sysbench_test_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
 
-	// Create storage instance
 	storage, err := NewFileStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
 
-	// Create test data
+	return &testHelper{
+		t:       t,
+		tmpDir:  tmpDir,
+		storage: storage,
+	}
+}
+
+// cleanup removes the temporary directory
+func (h *testHelper) cleanup() {
+	os.RemoveAll(h.tmpDir)
+}
+
+// createTestReport creates a test report with sample data
+func (h *testHelper) createTestReport() *Report {
 	startTime := time.Now().Add(-time.Hour)
 	endTime := time.Now()
 	config := TestConfig{
@@ -38,27 +56,37 @@ func TestFileStorage(t *testing.T) {
 		TotalTransactions: 10000,
 		Errors:            5,
 	}
-	report := NewReport("test_oltp", config, stats, startTime, endTime)
+	return NewReport("test_oltp", config, stats, startTime, endTime)
+}
+
+// assertFileCount verifies the number of files in a directory
+func (h *testHelper) assertFileCount(dir string, expected int) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		h.t.Fatalf("Failed to read directory %s: %v", dir, err)
+	}
+	if len(files) != expected {
+		h.t.Errorf("Expected %d files in %s, got %d", expected, dir, len(files))
+	}
+}
+
+func TestFileStorage(t *testing.T) {
+	h := newTestHelper(t)
+	defer h.cleanup()
+
+	report := h.createTestReport()
 
 	// Test SaveReport
 	t.Run("SaveReport", func(t *testing.T) {
-		if err := storage.SaveReport(report); err != nil {
+		if err := h.storage.SaveReport(report); err != nil {
 			t.Errorf("SaveReport failed: %v", err)
 		}
-
-		// Verify file exists
-		files, err := os.ReadDir(filepath.Join(tmpDir, "reports"))
-		if err != nil {
-			t.Fatalf("Failed to read reports dir: %v", err)
-		}
-		if len(files) != 1 {
-			t.Errorf("Expected 1 report file, got %d", len(files))
-		}
+		h.assertFileCount(filepath.Join(h.tmpDir, "reports"), 1)
 	})
 
 	// Test ListReports
 	t.Run("ListReports", func(t *testing.T) {
-		reports, err := storage.ListReports()
+		reports, err := h.storage.ListReports()
 		if err != nil {
 			t.Errorf("ListReports failed: %v", err)
 		}
@@ -80,23 +108,15 @@ func TestFileStorage(t *testing.T) {
 		}
 		reports := []*Report{report}
 
-		if err := storage.SaveScenarioReports(scenario, reports); err != nil {
+		if err := h.storage.SaveScenarioReports(scenario, reports); err != nil {
 			t.Errorf("SaveScenarioReports failed: %v", err)
 		}
-
-		// Verify scenario directory exists
-		files, err := os.ReadDir(filepath.Join(tmpDir, "scenarios"))
-		if err != nil {
-			t.Fatalf("Failed to read scenarios dir: %v", err)
-		}
-		if len(files) != 1 {
-			t.Errorf("Expected 1 scenario directory, got %d", len(files))
-		}
+		h.assertFileCount(filepath.Join(h.tmpDir, "scenarios"), 1)
 	})
 
 	// Test ListScenarios
 	t.Run("ListScenarios", func(t *testing.T) {
-		scenarios, err := storage.ListScenarios()
+		scenarios, err := h.storage.ListScenarios()
 		if err != nil {
 			t.Errorf("ListScenarios failed: %v", err)
 		}
@@ -110,7 +130,7 @@ func TestFileStorage(t *testing.T) {
 
 	// Test LoadScenarioReports
 	t.Run("LoadScenarioReports", func(t *testing.T) {
-		scenarios, err := storage.ListScenarios()
+		scenarios, err := h.storage.ListScenarios()
 		if err != nil {
 			t.Fatalf("Failed to list scenarios: %v", err)
 		}
@@ -118,7 +138,7 @@ func TestFileStorage(t *testing.T) {
 			t.Fatal("No scenarios found")
 		}
 
-		reports, err := storage.LoadScenarioReports(filepath.Base(filepath.Join(tmpDir, "scenarios")))
+		reports, err := h.storage.LoadScenarioReports(filepath.Base(filepath.Join(h.tmpDir, "scenarios")))
 		if err != nil {
 			t.Errorf("LoadScenarioReports failed: %v", err)
 		}
