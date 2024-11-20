@@ -323,7 +323,6 @@ func (t *OLTPTest) executeReadWriteTransaction(ctx context.Context) error {
 	// Update index
 	tableNum = rand.Intn(t.config.TablesCount) + 1
 	id = rand.Intn(t.config.TableSize) + 1
-	k := rand.Intn(t.config.TableSize) + 1
 	query = fmt.Sprintf("UPDATE sbtest%d SET k=k+1 WHERE id=?", tableNum)
 	if _, err := t.db.ExecContext(ctx, query, id); err != nil {
 		return err
@@ -366,7 +365,6 @@ func (t *OLTPTest) executeWriteOnlyTransaction(ctx context.Context) error {
 	// Update index
 	tableNum := rand.Intn(t.config.TablesCount) + 1
 	id := rand.Intn(t.config.TableSize) + 1
-	k := rand.Intn(t.config.TableSize) + 1
 	query := fmt.Sprintf("UPDATE sbtest%d SET k=k+1 WHERE id=?", tableNum)
 	if _, err := t.db.ExecContext(ctx, query, id); err != nil {
 		return err

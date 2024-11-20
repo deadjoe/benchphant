@@ -4,31 +4,16 @@
 [![GoDoc](https://pkg.go.dev/badge/github.com/deadjoe/benchphant)](https://pkg.go.dev/github.com/deadjoe/benchphant)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Build Status](https://github.com/deadjoe/benchphant/actions/workflows/test.yml/badge.svg)](https://github.com/deadjoe/benchphant/actions)
-[![Lint Status](https://github.com/deadjoe/benchphant/actions/workflows/lint.yml/badge.svg)](https://github.com/deadjoe/benchphant/actions)
 [![codecov](https://codecov.io/gh/deadjoe/benchphant/branch/main/graph/badge.svg)](https://codecov.io/gh/deadjoe/benchphant)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/deadjoe/benchphant)](https://github.com/deadjoe/benchphant)
-[![Release](https://img.shields.io/github/v/release/deadjoe/benchphant)](https://github.com/deadjoe/benchphant/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/deadjoe/benchphant)](https://hub.docker.com/r/deadjoe/benchphant)
 
-<div align="center">
-  <img src="docs/assets/logo.png" alt="Benchphant Logo" width="200">
-  <p><strong>Modern Database Performance Testing Made Easy</strong></p>
-</div>
-
-Benchphant is a modern, user-friendly database stress testing tool that supports MySQL (including MySQL clusters) and PostgreSQL databases. It provides a beautiful web interface for configuring and monitoring database performance tests, inspired by industry-standard tools like sysbench and TPC-C.
+Benchphant is a modern, user-friendly database stress testing tool that supports MySQL (including MySQL clusters) and PostgreSQL databases. It provides a command-line interface for configuring and monitoring database performance tests, inspired by industry-standard tools like sysbench and TPC-C.
 
 ## Features
 
-- Modern Web UI - Beautiful, responsive interface with real-time monitoring
-- Security First - Built-in authentication and encryption
-- Rich Visualizations - Interactive charts and comprehensive reports
-- Theme Support - Light/Dark modes for comfortable viewing
-- Multi-DB Support - MySQL, PostgreSQL, and more coming soon
+- Multi-DB Support - MySQL, PostgreSQL support
 - Advanced Metrics - QPS, latency percentiles, resource usage
 - Detailed Reports - Test history and comparative analysis
-- Local Storage - SQLite-based configuration and results storage
 - Plugin System - Extensible architecture for custom workloads
-- Docker Ready - Easy deployment with Docker and Docker Compose
 - Comprehensive Testing - Extensive test coverage and static analysis
 - Code Quality - Enforced by golangci-lint and continuous integration
 
@@ -37,100 +22,35 @@ Benchphant is a modern, user-friendly database stress testing tool that supports
 ### Prerequisites
 
 - Go 1.21 or later
-- Node.js 16 or later
-- npm or yarn
 
 ### Installation
-
-#### Using Go
 
 ```bash
 go install github.com/deadjoe/benchphant@latest
 ```
 
-#### Using Docker
+### Usage
+
+1. Run a simple OLTP test:
 
 ```bash
-docker pull deadjoe/benchphant
-docker run -p 8080:8080 deadjoe/benchphant
+benchphant oltp --host localhost --port 3306 --user root --password secret --database test
 ```
 
-### Running Locally
+2. Run a TPC-C test:
 
 ```bash
-benchphant
-```
-
-The application will automatically open in your default web browser at `http://localhost:8080`.
-
-Default credentials:
-- Username: `bench`
-- Password: `bench`
-
-## Development
-
-### Backend Development
-
-```bash
-# Get dependencies
-go mod download
-
-# Run tests with coverage
-go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
-
-# Run linters
-go vet ./...
-golangci-lint run
-```
-
-### Frontend Development
-
-```bash
-# Install dependencies
-cd web
-npm install
-
-# Start development server
-npm run dev
-
-# Run tests
-npm test
-
-# Build for production
-npm run build
+benchphant tpcc --host localhost --port 3306 --user root --password secret --database test --warehouses 10
 ```
 
 ## Documentation
 
-- [Getting Started Guide](docs/getting-started.md)
-- [Architecture Overview](docs/architecture.md)
-- [API Documentation](docs/api.md)
-- [Development Guide](docs/development.md)
-- [Plugin Development](docs/plugins.md)
-- [Contributing Guide](CONTRIBUTING.md)
+For detailed documentation, please visit our [Wiki](https://github.com/deadjoe/benchphant/wiki).
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on how to submit pull requests, report issues, and contribute to the project.
 
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [sysbench](https://github.com/akopytov/sysbench) - Inspiration for benchmark workloads
-- [TPC](http://www.tpc.org/) - Industry standard database benchmarks
-- [Vue.js](https://vuejs.org/) - Frontend framework
-- [Chart.js](https://www.chartjs.org/) - Beautiful charts
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
-
-## Contact
-
-- GitHub Issues: For bug reports and feature requests
-- Email: benchphant@example.com
-- Twitter: [@benchphant](https://twitter.com/benchphant)
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=deadjoe/benchphant&type=Date)](https://star-history.com/#deadjoe/benchphant&Date)

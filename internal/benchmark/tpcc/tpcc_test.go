@@ -16,9 +16,6 @@ import (
 )
 
 func TestTPCCBenchmark(t *testing.T) {
-	// Create test logger
-	logger := zaptest.NewLogger(t)
-
 	// Create test database
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
@@ -40,18 +37,18 @@ func TestTPCCBenchmark(t *testing.T) {
 	}
 
 	t.Run("Validate", func(t *testing.T) {
-		benchmark := NewTPCCBenchmark(config, db, logger)
+		benchmark := NewTPCCBenchmark(config, db, zaptest.NewLogger(t))
 		assert.NoError(t, benchmark.Validate())
 
 		// Test invalid config
 		invalidConfig := *config
 		invalidConfig.Warehouses = 0
-		invalidBenchmark := NewTPCCBenchmark(&invalidConfig, db, logger)
+		invalidBenchmark := NewTPCCBenchmark(&invalidConfig, db, zaptest.NewLogger(t))
 		assert.Error(t, invalidBenchmark.Validate())
 	})
 
 	t.Run("Setup", func(t *testing.T) {
-		benchmark := NewTPCCBenchmark(config, db, logger)
+		benchmark := NewTPCCBenchmark(config, db, zaptest.NewLogger(t))
 		ctx := context.Background()
 		assert.NoError(t, benchmark.Setup(ctx))
 
@@ -63,7 +60,7 @@ func TestTPCCBenchmark(t *testing.T) {
 	})
 
 	t.Run("Run", func(t *testing.T) {
-		benchmark := NewTPCCBenchmark(config, db, logger)
+		benchmark := NewTPCCBenchmark(config, db, zaptest.NewLogger(t))
 		ctx := context.Background()
 		require.NoError(t, benchmark.Setup(ctx))
 
@@ -76,7 +73,7 @@ func TestTPCCBenchmark(t *testing.T) {
 	})
 
 	t.Run("Cleanup", func(t *testing.T) {
-		benchmark := NewTPCCBenchmark(config, db, logger)
+		benchmark := NewTPCCBenchmark(config, db, zaptest.NewLogger(t))
 		ctx := context.Background()
 		require.NoError(t, benchmark.Setup(ctx))
 		assert.NoError(t, benchmark.Cleanup(ctx))
@@ -88,8 +85,7 @@ func TestTPCCBenchmark(t *testing.T) {
 }
 
 func TestFactory(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	factory := NewFactory(logger)
+	factory := NewFactory(zaptest.NewLogger(t))
 
 	t.Run("Create", func(t *testing.T) {
 		db, err := sql.Open("sqlite3", ":memory:")
@@ -133,7 +129,6 @@ func TestFactory(t *testing.T) {
 }
 
 func TestRunner(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -153,7 +148,7 @@ func TestRunner(t *testing.T) {
 	}
 
 	t.Run("Run", func(t *testing.T) {
-		runner := NewRunner(db, config, logger)
+		runner := NewRunner(db, config, zaptest.NewLogger(t))
 		ctx := context.Background()
 
 		// Setup schema and load data
@@ -173,7 +168,6 @@ func TestRunner(t *testing.T) {
 }
 
 func TestTransactionExecutor(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -246,7 +240,6 @@ func TestTransactionExecutor(t *testing.T) {
 }
 
 func TestConcurrentTransactions(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -368,7 +361,6 @@ func TestConcurrentTransactions(t *testing.T) {
 }
 
 func TestBoundaryConditions(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -420,7 +412,6 @@ func TestBoundaryConditions(t *testing.T) {
 }
 
 func TestErrorHandling(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -489,7 +480,6 @@ func TestErrorHandling(t *testing.T) {
 }
 
 func TestPerformanceMetrics(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -509,7 +499,7 @@ func TestPerformanceMetrics(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	benchmark := NewTPCCBenchmark(config, db, logger)
+	benchmark := NewTPCCBenchmark(config, db, zaptest.NewLogger(t))
 	require.NoError(t, benchmark.Setup(ctx))
 
 	// Run benchmark

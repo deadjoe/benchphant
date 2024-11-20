@@ -144,7 +144,7 @@ func (e *TransactionExecutor) ExecuteNewOrder(ctx context.Context, tx *NewOrder)
 		}
 	}
 
-	// Calculate total amount with tax
+	// Calculate total amount with tax and discount
 	totalAmount = totalAmount * (1 + wTax + dTax) * (1 - cDiscount)
 
 	// Commit transaction
