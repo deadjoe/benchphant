@@ -203,12 +203,3 @@ func (t TestType) IsWriteOnly() bool {
 func (t TestType) IsReadWrite() bool {
 	return t == TestTypeOLTPReadWrite
 }
-
-// Errors
-var (
-	ErrInvalidConfig     = errors.New("invalid configuration")
-	ErrInvalidTableSize  = errors.New("invalid table size")
-	ErrInvalidNumTables  = errors.New("invalid number of tables")
-	ErrInvalidNumThreads = errors.New("invalid number of threads")
-	ErrInvalidDuration   = errors.New("invalid duration")
-)
