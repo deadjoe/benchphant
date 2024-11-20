@@ -240,6 +240,22 @@ type Result struct {
 	Timestamp time.Time     `json:"timestamp"`
 }
 
+// TestStatus represents the status of a test
+type TestStatus string
+
+const (
+	// TestStatusPending indicates the test is pending
+	TestStatusPending TestStatus = "pending"
+	// TestStatusRunning indicates the test is running
+	TestStatusRunning TestStatus = "running"
+	// TestStatusCompleted indicates the test has completed successfully
+	TestStatusCompleted TestStatus = "completed"
+	// TestStatusFailed indicates the test has failed
+	TestStatusFailed TestStatus = "failed"
+	// TestStatusCancelled indicates the test was cancelled
+	TestStatusCancelled TestStatus = "cancelled"
+)
+
 // IsReadOnly checks if the test type is read-only
 func (t TestType) IsReadOnly() bool {
 	switch t {

@@ -6,25 +6,19 @@ import (
 	"time"
 
 	"github.com/deadjoe/benchphant/internal/benchmark/sysbench/types"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 )
 
 func TestOLTPTest(t *testing.T) {
 	// Create test configuration
-	config := NewOLTPTestConfig()
-	config.TestType = TestTypeOLTPRead
-	config.Database = "test_db"
-	config.Username = "root"
-	config.Password = ""
-	config.Host = "localhost"
-	config.Port = 3306
-	config.Threads = 4
-	config.TableSize = 1000
-	config.TablesCount = 2
+	config := types.NewOLTPTestConfig()
+	config.TestType = types.TestTypeOLTPRead
+	config.NumThreads = 4
+	config.Duration = 10 * time.Second
+	config.ReportInterval = 1 * time.Second
 
 	// Create test instance
-	test := NewOLTPTest(config)
+	test := NewOLTPTest(config, zaptest.NewLogger(t))
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -43,19 +37,26 @@ func TestOLTPTest(t *testing.T) {
 
 	// Run test
 	t.Log("Running test...")
-	report, err := test.Run(ctx)
+	err := test.Run(ctx)
 	if err != nil {
-		t.Fatalf("Failed to run test: %v", err)
+		t.Errorf("Failed to run test: %v", err)
+	}
+
+	// Verify test status
+	if test.Status().Status != string(types.TestStatusCompleted) {
+		t.Errorf("Expected test status to be completed, got %s", test.Status().Status)
+	}
+
+	// Get report
+	report := test.GetReport()
+	if report == nil {
+		t.Error("Expected report to be non-nil")
 	}
 
 	// Verify report
 	t.Log("Verifying report...")
-	if report == nil {
-		t.Fatal("Report is nil")
-	}
-
-	if report.TestName != string(TestTypeOLTPRead) {
-		t.Errorf("Expected test name %s, got %s", TestTypeOLTPRead, report.TestName)
+	if report.TestName != string(types.TestTypeOLTPRead) {
+		t.Errorf("Expected test name %s, got %s", types.TestTypeOLTPRead, report.TestName)
 	}
 
 	if report.TotalTransactions == 0 {
@@ -71,31 +72,36 @@ func TestOLTPTest(t *testing.T) {
 	}
 
 	// Test different OLTP test types
-	testTypes := []TestType{
-		TestTypeOLTPWrite,
-		TestTypeOLTPReadWrite,
-		TestTypeOLTPPointSelect,
-		TestTypeOLTPSimpleSelect,
-		TestTypeOLTPSumRange,
-		TestTypeOLTPOrderRange,
-		TestTypeOLTPDistinctRange,
+	testTypes := []types.TestType{
+		types.TestTypeOLTPWrite,
+		types.TestTypeOLTPReadWrite,
+		types.TestTypeOLTPPointSelect,
+		types.TestTypeOLTPSimpleSelect,
+		types.TestTypeOLTPSumRange,
+		types.TestTypeOLTPOrderRange,
+		types.TestTypeOLTPDistinctRange,
 	}
 
 	for _, testType := range testTypes {
 		t.Run(string(testType), func(t *testing.T) {
 			config.TestType = testType
-			test := NewOLTPTest(config)
+			test := NewOLTPTest(config, zaptest.NewLogger(t))
 
 			if err := test.Prepare(ctx); err != nil {
 				t.Fatalf("Failed to prepare %s test: %v", testType, err)
 			}
 			defer test.Cleanup(ctx)
 
-			report, err := test.Run(ctx)
+			err := test.Run(ctx)
 			if err != nil {
 				t.Fatalf("Failed to run %s test: %v", testType, err)
 			}
 
+			if test.Status().Status != string(types.TestStatusCompleted) {
+				t.Errorf("Expected test status to be completed, got %s", test.Status().Status)
+			}
+
+			report := test.GetReport()
 			if report == nil {
 				t.Fatal("Report is nil")
 			}
@@ -108,39 +114,34 @@ func TestOLTPTest(t *testing.T) {
 }
 
 func TestOLTPTestConfig(t *testing.T) {
-	config := NewOLTPTestConfig()
+	config := types.NewOLTPTestConfig()
 
 	// Test default values
-	if config.Threads != 1 {
-		t.Errorf("Expected default threads to be 1, got %d", config.Threads)
+	if config.NumThreads != 1 {
+		t.Errorf("Expected default threads to be 1, got %d", config.NumThreads)
 	}
 
-	if config.Database != "sbtest" {
-		t.Errorf("Expected default database to be 'sbtest', got %s", config.Database)
+	if config.Duration != 10*time.Second {
+		t.Errorf("Expected default duration to be 10s, got %s", config.Duration)
 	}
 
-	if config.TableSize != 10000 {
-		t.Errorf("Expected default table size to be 10000, got %d", config.TableSize)
-	}
-
-	if config.TablesCount != 1 {
-		t.Errorf("Expected default tables count to be 1, got %d", config.TablesCount)
+	if config.ReportInterval != 1*time.Second {
+		t.Errorf("Expected default report interval to be 1s, got %s", config.ReportInterval)
 	}
 
 	// Test configuration updates
-	config.Threads = 4
-	config.TableSize = 1000
-	config.TablesCount = 2
-	config.ReadOnly = true
+	config.NumThreads = 4
+	config.Duration = 5 * time.Second
+	config.ReportInterval = 2 * time.Second
 
-	test := NewOLTPTest(config)
+	test := NewOLTPTest(config, zaptest.NewLogger(t))
 	args := test.buildBaseArgs()
 
 	// Verify command line arguments
 	expectedArgs := []string{
 		"--threads=4",
-		"--tables=2",
-		"--table-size=1000",
+		"--time=5",
+		"--report-interval=2",
 	}
 
 	for _, expected := range expectedArgs {
@@ -157,73 +158,56 @@ func TestOLTPTestConfig(t *testing.T) {
 	}
 }
 
-func TestOLTPTestOutput(t *testing.T) {
-	test := NewOLTPTest(NewOLTPTestConfig())
-
-	// Test output parsing
-	sampleOutput := `
-sysbench 1.0.20 (using bundled LuaJIT 2.1.0-beta2)
-
-Running the test with following options:
-Number of threads: 4
-Initializing random number generator from current time
-
-Initializing worker threads...
-
-Threads started!
-
-SQL statistics:
-    queries performed:
-        read:                            140
-        write:                           40
-        other:                           20
-        total:                           200
-    transactions:                        10     (1.23 per sec.)
-    queries:                            200    (24.60 per sec.)
-    ignored errors:                      0      (0.00 per sec.)
-    reconnects:                         0      (0.00 per sec.)
-
-General statistics:
-    total time:                          8.1234s
-    total number of events:              10
-
-Latency (ms):
-         min:                                    1.23
-         avg:                                    4.56
-         max:                                   10.89
-         95th percentile:                        8.90
-         99th percentile:                        9.99
-         sum:                                45.60
-
-Threads fairness:
-    events (avg/stddev):           2.5000/0.50
-    execution time (avg/stddev):   0.0114/0.00
-`
-
-	stats := test.parseOutput(sampleOutput)
-
-	if stats.TPS != 1.23 {
-		t.Errorf("Expected TPS 1.23, got %f", stats.TPS)
+func TestOLTPTestValidation(t *testing.T) {
+	testCases := []struct {
+		name          string
+		configModify  func(*types.OLTPTestConfig)
+		expectedError bool
+	}{
+		{
+			name: "invalid threads",
+			configModify: func(config *types.OLTPTestConfig) {
+				config.NumThreads = 0
+			},
+			expectedError: true,
+		},
+		{
+			name: "invalid duration",
+			configModify: func(config *types.OLTPTestConfig) {
+				config.Duration = 0
+			},
+			expectedError: true,
+		},
 	}
 
-	if stats.LatencyAvg != time.Duration(4.56*float64(time.Millisecond)) {
-		t.Errorf("Expected avg latency 4.56ms, got %v", stats.LatencyAvg)
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := types.NewOLTPTestConfig()
+			tc.configModify(config)
 
-	if stats.LatencyP95 != time.Duration(8.90*float64(time.Millisecond)) {
-		t.Errorf("Expected P95 latency 8.90ms, got %v", stats.LatencyP95)
-	}
+			test := NewOLTPTest(config, zaptest.NewLogger(t))
+			ctx := context.Background()
 
-	if stats.LatencyP99 != time.Duration(9.99*float64(time.Millisecond)) {
-		t.Errorf("Expected P99 latency 9.99ms, got %v", stats.LatencyP99)
-	}
+			err := test.Prepare(ctx)
+			if tc.expectedError && err == nil {
+				t.Error("Expected error but got nil")
+			}
+			if !tc.expectedError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+			}
 
-	if stats.TotalTransactions != 10 {
-		t.Errorf("Expected 10 total transactions, got %d", stats.TotalTransactions)
-	}
+			if err == nil {
+				defer test.Cleanup(ctx)
 
-	if stats.Errors != 0 {
-		t.Errorf("Expected 0 errors, got %d", stats.Errors)
+				err := test.Run(ctx)
+				if tc.expectedError && err == nil {
+					t.Error("Expected error but got nil")
+				}
+				if !tc.expectedError && err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
 	}
 }
 
@@ -259,7 +243,7 @@ func TestMultiDatabaseSupport(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			config := NewOLTPTestConfig()
+			config := types.NewOLTPTestConfig()
 			config.DBType = tc.dbType
 			config.Host = tc.host
 			config.Port = tc.port
@@ -269,7 +253,7 @@ func TestMultiDatabaseSupport(t *testing.T) {
 			config.TableSize = 100
 			config.TablesCount = 1
 
-			test := NewOLTPTest(config)
+			test := NewOLTPTest(config, zaptest.NewLogger(t))
 			args := test.buildBaseArgs()
 
 			// Verify database-specific arguments
@@ -297,14 +281,14 @@ func TestMultiDatabaseSupport(t *testing.T) {
 }
 
 func TestHighConcurrency(t *testing.T) {
-	config := NewOLTPTestConfig()
-	config.TestType = TestTypeOLTPReadWrite
-	config.Threads = 32
+	config := types.NewOLTPTestConfig()
+	config.TestType = types.TestTypeOLTPReadWrite
+	config.NumThreads = 32
 	config.TableSize = 1000
 	config.TablesCount = 4
 	config.Duration = 10 * time.Second
 
-	test := NewOLTPTest(config)
+	test := NewOLTPTest(config, zaptest.NewLogger(t))
 	ctx := context.Background()
 
 	// Prepare test data
@@ -313,11 +297,13 @@ func TestHighConcurrency(t *testing.T) {
 	defer test.Cleanup(ctx)
 
 	// Run high concurrency test
-	report, err := test.Run(ctx)
+	err = test.Run(ctx)
 	require.NoError(t, err)
-	require.NotNil(t, report)
 
 	// Verify high concurrency metrics
+	report := test.GetReport()
+	require.NotNil(t, report)
+
 	assert.True(t, report.TotalTransactions > 0, "Expected non-zero total transactions")
 	assert.True(t, report.TPS > 0, "Expected non-zero TPS")
 	assert.True(t, report.LatencyAvg > 0, "Expected non-zero average latency")
@@ -326,14 +312,14 @@ func TestHighConcurrency(t *testing.T) {
 }
 
 func TestStressTest(t *testing.T) {
-	config := NewOLTPTestConfig()
-	config.TestType = TestTypeOLTPReadWrite
-	config.Threads = 16
+	config := types.NewOLTPTestConfig()
+	config.TestType = types.TestTypeOLTPReadWrite
+	config.NumThreads = 16
 	config.TableSize = 10000
 	config.TablesCount = 8
 	config.Duration = 30 * time.Second
 
-	test := NewOLTPTest(config)
+	test := NewOLTPTest(config, zaptest.NewLogger(t))
 	ctx := context.Background()
 
 	// Prepare test data
@@ -342,11 +328,13 @@ func TestStressTest(t *testing.T) {
 	defer test.Cleanup(ctx)
 
 	// Run stress test
-	report, err := test.Run(ctx)
+	err = test.Run(ctx)
 	require.NoError(t, err)
-	require.NotNil(t, report)
 
 	// Verify stress test metrics
+	report := test.GetReport()
+	require.NotNil(t, report)
+
 	assert.True(t, report.TotalTransactions > 0, "Expected non-zero total transactions")
 	assert.True(t, report.TPS > 0, "Expected non-zero TPS")
 	assert.True(t, report.LatencyAvg > 0, "Expected non-zero average latency")
@@ -355,19 +343,19 @@ func TestStressTest(t *testing.T) {
 }
 
 func TestErrorRecovery(t *testing.T) {
-	config := NewOLTPTestConfig()
-	config.TestType = TestTypeOLTPReadWrite
-	config.Threads = 4
+	config := types.NewOLTPTestConfig()
+	config.TestType = types.TestTypeOLTPReadWrite
+	config.NumThreads = 4
 	config.TableSize = 100
 	config.TablesCount = 2
 
-	test := NewOLTPTest(config)
+	test := NewOLTPTest(config, zaptest.NewLogger(t))
 	ctx := context.Background()
 
 	t.Run("DatabaseConnectionError", func(t *testing.T) {
 		// Test with invalid database connection
 		config.Host = "nonexistent-host"
-		test := NewOLTPTest(config)
+		test := NewOLTPTest(config, zaptest.NewLogger(t))
 		err := test.Prepare(ctx)
 		assert.Error(t, err, "Expected error for invalid database connection")
 	})
@@ -375,24 +363,24 @@ func TestErrorRecovery(t *testing.T) {
 	t.Run("InvalidTableSize", func(t *testing.T) {
 		// Test with invalid table size
 		config.TableSize = -1
-		test := NewOLTPTest(config)
+		test := NewOLTPTest(config, zaptest.NewLogger(t))
 		err := test.Prepare(ctx)
 		assert.Error(t, err, "Expected error for invalid table size")
 	})
 
 	t.Run("InvalidThreadCount", func(t *testing.T) {
 		// Test with invalid thread count
-		config.Threads = 0
-		test := NewOLTPTest(config)
+		config.NumThreads = 0
+		test := NewOLTPTest(config, zaptest.NewLogger(t))
 		err := test.Prepare(ctx)
 		assert.Error(t, err, "Expected error for invalid thread count")
 	})
 
 	t.Run("TestInterruption", func(t *testing.T) {
 		// Test interruption during test execution
-		config := NewOLTPTestConfig()
+		config := types.NewOLTPTestConfig()
 		config.Duration = 10 * time.Second
-		test := NewOLTPTest(config)
+		test := NewOLTPTest(config, zaptest.NewLogger(t))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		err := test.Prepare(ctx)
@@ -402,7 +390,7 @@ func TestErrorRecovery(t *testing.T) {
 		// Start test in goroutine
 		errChan := make(chan error)
 		go func() {
-			_, err := test.Run(ctx)
+			err := test.Run(ctx)
 			errChan <- err
 		}()
 

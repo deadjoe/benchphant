@@ -47,10 +47,10 @@ func NewRunner(db *sql.DB, config *Config, logger *zap.Logger) *Runner {
 }
 
 // Run executes the TPC-C test
-func (r *Runner) Run(ctx context.Context) error {
+func (r *Runner) Run(ctx context.Context) (*Stats, error) {
 	// Initialize test
 	if err := r.initialize(ctx); err != nil {
-		return fmt.Errorf("failed to initialize test: %w", err)
+		return nil, fmt.Errorf("failed to initialize test: %w", err)
 	}
 
 	// Create worker channels
@@ -62,26 +62,20 @@ func (r *Runner) Run(ctx context.Context) error {
 		go r.worker(ctx, workCh, errCh)
 	}
 
-	// Parse duration
-	duration, err := time.ParseDuration(r.config.Duration)
-	if err != nil {
-		return fmt.Errorf("invalid duration: %w", err)
-	}
-
 	// Run test for the specified duration
-	timer := time.NewTimer(duration)
+	timer := time.NewTimer(r.config.Duration)
 	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		case err := <-errCh:
-			return err
+			return nil, err
 		case <-timer.C:
 			close(workCh)
 			r.stats.Finalize()
-			return nil
+			return r.stats, nil
 		default:
 			workCh <- struct{}{}
 		}
@@ -131,12 +125,10 @@ func (r *Runner) startTerminals() {
 	}
 }
 
-// stop stops all terminals and the test
-func (r *Runner) stop() {
+// Stop stops the test
+func (r *Runner) Stop() {
 	close(r.stopChan)
-	for _, t := range r.terminals {
-		close(t.stopChan)
-	}
+	r.wg.Wait()
 }
 
 // monitor periodically reports test progress

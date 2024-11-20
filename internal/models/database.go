@@ -72,6 +72,17 @@ func (c *Database) DSN() string {
 	}
 }
 
+// TestConnection tests if the database connection is working
+func (c *Database) TestConnection() error {
+	db, err := sql.Open(string(c.Type), c.DSN())
+	if err != nil {
+		return fmt.Errorf("failed to open database connection: %w", err)
+	}
+	defer db.Close()
+	
+	return db.Ping()
+}
+
 // ConnectionManager represents a manager of database connections
 type ConnectionManager struct {
 	mu          sync.Mutex
@@ -135,20 +146,6 @@ func (p *ConnectionManager) Close() error {
 	p.connections = nil
 	close(p.available)
 	return lastErr
-}
-
-// TestConnection tests if the database connection is working
-func (p *ConnectionManager) TestConnection() error {
-	conn, err := p.Get()
-	if err != nil {
-		return err
-	}
-	defer p.Put(conn)
-
-	if conn == nil {
-		return fmt.Errorf("no database connection available")
-	}
-	return conn.Ping()
 }
 
 // Stats returns the connection manager statistics

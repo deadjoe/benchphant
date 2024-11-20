@@ -4,18 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/deadjoe/benchphant/internal/benchmark"
+	"github.com/deadjoe/benchphant/internal/models"
 	"go.uber.org/zap"
 )
 
-// TPCCBenchmark implements the Benchmark interface for TPC-C
+// TPCCBenchmark implements the BenchmarkRunner interface for TPC-C
 type TPCCBenchmark struct {
 	config *Config
 	db     *sql.DB
 	logger *zap.Logger
 	runner *Runner
+	status benchmark.BenchmarkStatus
+	mu     sync.RWMutex
 }
 
 // NewTPCCBenchmark creates a new TPC-C benchmark instance
@@ -24,6 +28,11 @@ func NewTPCCBenchmark(config *Config, db *sql.DB, logger *zap.Logger) *TPCCBench
 		config: config,
 		db:     db,
 		logger: logger,
+		status: benchmark.BenchmarkStatus{
+			Status:   string(models.BenchmarkStatusPending),
+			Progress: 0,
+			Metrics:  make(map[string]interface{}),
+		},
 	}
 }
 
@@ -70,7 +79,6 @@ func (b *TPCCBenchmark) Run(ctx context.Context) (*benchmark.Result, error) {
 	)
 
 	startTime := time.Now()
-	b.runner = NewRunner(b.db, b.config)
 	stats, err := b.runner.Run(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("run: %w", err)
@@ -150,4 +158,71 @@ func (b *TPCCBenchmark) Validate() error {
 		return fmt.Errorf("logger is nil")
 	}
 	return b.config.Validate()
+}
+
+// Start starts the benchmark
+func (b *TPCCBenchmark) Start() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.status.Status == string(models.BenchmarkStatusRunning) {
+		return fmt.Errorf("benchmark is already running")
+	}
+
+	b.status.Status = string(models.BenchmarkStatusRunning)
+	b.status.Progress = 0
+	b.status.Metrics = make(map[string]interface{})
+
+	// Create runner
+	b.runner = NewRunner(b.db, b.config, b.logger)
+
+	// Run benchmark in a goroutine
+	go func() {
+		ctx := context.Background()
+		if err := b.Setup(ctx); err != nil {
+			b.logger.Error("Failed to setup benchmark", zap.Error(err))
+			b.status.Status = string(models.BenchmarkStatusFailed)
+			return
+		}
+
+		stats, err := b.runner.Run(ctx)
+		if err != nil {
+			b.logger.Error("Failed to run benchmark", zap.Error(err))
+			b.status.Status = string(models.BenchmarkStatusFailed)
+			return
+		}
+
+		b.mu.Lock()
+		b.status.Status = string(models.BenchmarkStatusCompleted)
+		b.status.Progress = 100
+		b.status.Metrics = map[string]interface{}{
+			"total_transactions": stats.TotalTransactions,
+			"tps":               stats.TPS,
+			"latency_avg":       stats.LatencyAvg,
+			"latency_p95":       stats.LatencyP95,
+			"latency_p99":       stats.LatencyP99,
+			"errors":            stats.Errors,
+		}
+		b.mu.Unlock()
+	}()
+
+	return nil
+}
+
+// Stop stops the benchmark
+func (b *TPCCBenchmark) Stop() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.runner != nil {
+		b.runner.Stop()
+	}
+	b.status.Status = string(models.BenchmarkStatusCancelled)
+}
+
+// Status returns the current benchmark status
+func (b *TPCCBenchmark) Status() benchmark.BenchmarkStatus {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.status
 }

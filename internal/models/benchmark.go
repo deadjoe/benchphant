@@ -55,7 +55,7 @@ type BenchmarkResult struct {
 
 // BenchmarkConfig represents the configuration for starting a benchmark
 type BenchmarkConfig struct {
-	ConnectionID string `json:"connection_id"`
+	ConnectionID int64  `json:"connection_id"`
 	Duration     int    `json:"duration"`
 	Threads      int    `json:"threads"`
 	Query        string `json:"query"`
@@ -65,8 +65,8 @@ type BenchmarkConfig struct {
 
 // Validate validates the benchmark configuration
 func (c *BenchmarkConfig) Validate() error {
-	if c.ConnectionID == "" {
-		return errors.New("connection_id is required")
+	if c.ConnectionID <= 0 {
+		return errors.New("connection_id must be greater than 0")
 	}
 	if c.Duration <= 0 {
 		return errors.New("duration must be greater than 0")

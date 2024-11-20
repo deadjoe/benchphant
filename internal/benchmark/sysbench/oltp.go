@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deadjoe/benchphant/internal/benchmark"
 	"github.com/deadjoe/benchphant/internal/benchmark/sysbench/types"
 	"go.uber.org/zap"
 )
@@ -19,7 +20,7 @@ import (
 // OLTPTestConfig represents configuration for OLTP tests
 type OLTPTestConfig struct {
 	TestType        types.TestType  `json:"test_type"`
-	Threads         int            `json:"threads"`
+	NumThreads      int            `json:"num_threads"`
 	Duration        time.Duration  `json:"duration"`
 	ReportInterval  time.Duration  `json:"report_interval"`
 	TableSize       int            `json:"table_size"`
@@ -50,7 +51,7 @@ type OLTPTestConfig struct {
 func NewOLTPTestConfig() *OLTPTestConfig {
 	return &OLTPTestConfig{
 		TestType:        types.TestTypeOLTPReadWrite,
-		Threads:         1,
+		NumThreads:      1,
 		Duration:        10 * time.Second,
 		ReportInterval:  1 * time.Second,
 		TableSize:       10000,
@@ -81,18 +82,26 @@ func NewOLTPTestConfig() *OLTPTestConfig {
 // OLTPTest represents a sysbench OLTP test
 type OLTPTest struct {
 	db     *sql.DB
-	config *OLTPTestConfig
+	config *types.OLTPTestConfig
 	logger *zap.Logger
 	stats  *types.TestStats
+	status benchmark.BenchmarkStatus
+	mu     sync.RWMutex
 	done   chan struct{}
 }
 
 // NewOLTPTest creates a new OLTP test
-func NewOLTPTest(config *OLTPTestConfig) *OLTPTest {
+func NewOLTPTest(config *types.OLTPTestConfig, logger *zap.Logger) *OLTPTest {
 	return &OLTPTest{
 		config: config,
+		logger: logger,
 		stats:  types.NewTestStats(),
-		done:   make(chan struct{}),
+		status: benchmark.BenchmarkStatus{
+			Status:   string(types.TestStatusPending),
+			Progress: 0,
+			Metrics:  make(map[string]interface{}),
+		},
+		done: make(chan struct{}),
 	}
 }
 
@@ -101,13 +110,78 @@ func (t *OLTPTest) SetDB(db *sql.DB) {
 	t.db = db
 }
 
-// SetLogger sets the logger
-func (t *OLTPTest) SetLogger(logger *zap.Logger) {
-	t.logger = logger
+// Start starts the test
+func (t *OLTPTest) Start() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.db == nil {
+		return fmt.Errorf("database connection not set")
+	}
+
+	if t.status.Status == string(types.TestStatusRunning) {
+		return fmt.Errorf("test is already running")
+	}
+
+	t.status.Status = string(types.TestStatusRunning)
+	t.status.Progress = 0
+	t.status.Metrics = make(map[string]interface{})
+
+	t.logger.Info("Starting OLTP test",
+		zap.String("test_type", string(t.config.TestType)),
+		zap.Int("num_threads", t.config.NumThreads),
+		zap.Duration("duration", t.config.Duration),
+	)
+
+	// Run test in a goroutine
+	go func() {
+		ctx := context.Background()
+		if err := t.Run(ctx); err != nil {
+			t.logger.Error("Test failed", zap.Error(err))
+			t.mu.Lock()
+			t.status.Status = string(types.TestStatusFailed)
+			t.mu.Unlock()
+			return
+		}
+
+		t.mu.Lock()
+		t.status.Status = string(types.TestStatusCompleted)
+		t.status.Progress = 100
+		t.status.Metrics = map[string]interface{}{
+			"total_transactions": t.stats.TotalTransactions,
+			"tps":               t.stats.TPS,
+			"latency_avg":       t.stats.AvgLatency,
+			"latency_p95":       t.stats.P95Latency,
+			"latency_p99":       t.stats.P99Latency,
+			"errors":            t.stats.TotalErrors,
+		}
+		t.mu.Unlock()
+	}()
+
+	return nil
+}
+
+// Stop stops the test
+func (t *OLTPTest) Stop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	close(t.done)
+	t.status.Status = string(types.TestStatusCancelled)
+}
+
+// Status returns the current test status
+func (t *OLTPTest) Status() benchmark.BenchmarkStatus {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.status
 }
 
 // GetReport returns the test report
 func (t *OLTPTest) GetReport() *types.Report {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
 	return &types.Report{
 		Name:     string(t.config.TestType),
 		Duration: t.config.Duration,
@@ -127,13 +201,13 @@ func (t *OLTPTest) Run(ctx context.Context) error {
 
 	t.logger.Info("Starting OLTP test",
 		zap.String("test_type", string(t.config.TestType)),
-		zap.Int("num_threads", t.config.Threads),
+		zap.Int("num_threads", t.config.NumThreads),
 		zap.Duration("duration", t.config.Duration),
 	)
 
 	// Start workers
 	var wg sync.WaitGroup
-	for i := 0; i < t.config.Threads; i++ {
+	for i := 0; i < t.config.NumThreads; i++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
@@ -361,7 +435,7 @@ func validateConfig(config *OLTPTestConfig) error {
 	if config.TablesCount <= 0 {
 		return types.ErrInvalidNumTables
 	}
-	if config.Threads <= 0 {
+	if config.NumThreads <= 0 {
 		return types.ErrInvalidNumThreads
 	}
 

@@ -19,7 +19,17 @@ type BenchmarkStatus struct {
 	Metrics  map[string]interface{} `json:"metrics"`
 }
 
-// Benchmark represents a database benchmark
+// BenchmarkRunner represents a database benchmark
+type BenchmarkRunner interface {
+	// Start starts the benchmark
+	Start() error
+	// Stop stops the benchmark
+	Stop()
+	// Status returns the current benchmark status
+	Status() BenchmarkStatus
+}
+
+// Benchmark represents a database benchmark implementation
 type Benchmark struct {
 	config     *models.Benchmark
 	connection *models.DBConnection
@@ -243,16 +253,18 @@ func (b *Benchmark) updateProgress(ctx context.Context, stmt *sql.Stmt) {
 
 // Factory represents a benchmark factory
 type Factory interface {
+	// Name returns the name of the benchmark type
+	Name() string
 	// Create creates a new benchmark instance
-	Create(config *models.Benchmark, conn *models.DBConnection, logger *zap.Logger) (Benchmark, error)
+	Create(config *models.Benchmark, conn *models.DBConnection, logger *zap.Logger) (BenchmarkRunner, error)
 }
+
+var factories = make(map[string]Factory)
 
 // RegisterFactory registers a benchmark factory
 func RegisterFactory(name string, factory Factory) {
 	factories[name] = factory
 }
-
-var factories = make(map[string]Factory)
 
 // Result represents the result of a benchmark run
 type Result struct {
