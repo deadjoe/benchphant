@@ -1,4 +1,4 @@
-# Benchphant
+# BenchPhant
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/deadjoe/benchphant)](https://goreportcard.com/report/github.com/deadjoe/benchphant)
 [![GoDoc](https://pkg.go.dev/badge/github.com/deadjoe/benchphant)](https://pkg.go.dev/github.com/deadjoe/benchphant)
