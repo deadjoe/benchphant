@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // ScenarioType represents different predefined test scenarios
 type ScenarioType string
@@ -98,6 +101,24 @@ type TestConfig struct {
 	Debug bool
 }
 
+// TestStats represents test statistics
+type TestStats struct {
+	TotalTransactions int64
+	TPS              float64
+	LatencyAvg       time.Duration
+	LatencyP95       time.Duration
+	LatencyP99       time.Duration
+	Errors           int64
+}
+
+// AddTransaction adds a transaction to the statistics
+func (s *TestStats) AddTransaction(duration time.Duration) {
+	s.TotalTransactions++
+	s.LatencyAvg = (s.LatencyAvg*time.Duration(s.TotalTransactions-1) + duration) / time.Duration(s.TotalTransactions)
+	// Note: P95 and P99 calculations would require storing all durations and sorting them
+	// For simplicity, we're not implementing them here
+}
+
 // Report represents a test report
 type Report struct {
 	TestName          string
@@ -182,3 +203,12 @@ func (t TestType) IsWriteOnly() bool {
 func (t TestType) IsReadWrite() bool {
 	return t == TestTypeOLTPReadWrite
 }
+
+// Errors
+var (
+	ErrInvalidConfig     = errors.New("invalid configuration")
+	ErrInvalidTableSize  = errors.New("invalid table size")
+	ErrInvalidNumTables  = errors.New("invalid number of tables")
+	ErrInvalidNumThreads = errors.New("invalid number of threads")
+	ErrInvalidDuration   = errors.New("invalid duration")
+)
