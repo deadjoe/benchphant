@@ -33,7 +33,7 @@ func TestTPCCDistributionValidation(t *testing.T) {
 		{
 			name: "Valid weights",
 			weights: TransactionWeights{
-				NewOrderWeight:     45.0,
+				NewOrderWeight:    45.0,
 				PaymentWeight:     43.0,
 				OrderStatusWeight: 4.0,
 				DeliveryWeight:    4.0,
@@ -44,7 +44,7 @@ func TestTPCCDistributionValidation(t *testing.T) {
 		{
 			name: "Invalid weights - sum > 100",
 			weights: TransactionWeights{
-				NewOrderWeight:     50.0,
+				NewOrderWeight:    50.0,
 				PaymentWeight:     43.0,
 				OrderStatusWeight: 4.0,
 				DeliveryWeight:    4.0,
@@ -55,7 +55,7 @@ func TestTPCCDistributionValidation(t *testing.T) {
 		{
 			name: "Invalid weights - sum < 100",
 			weights: TransactionWeights{
-				NewOrderWeight:     40.0,
+				NewOrderWeight:    40.0,
 				PaymentWeight:     43.0,
 				OrderStatusWeight: 4.0,
 				DeliveryWeight:    4.0,
@@ -92,7 +92,7 @@ func TestTPCCDistributionStats(t *testing.T) {
 	}
 
 	stats = dist.GetDistributionStats()
-	
+
 	// 允许 0.5% 的误差范围
 	tolerance := 0.5
 	assert.InDelta(t, 45.0, stats[NewOrder], tolerance)
@@ -111,7 +111,7 @@ func TestThinkTimes(t *testing.T) {
 		for i := 0; i < 1000; i++ {
 			thinkTime := dist.GetThinkTime(txType)
 			seconds := float64(thinkTime) / float64(time.Second)
-			
+
 			// 思考时间应该在 minTime 和 minTime*2 之间
 			assert.GreaterOrEqual(t, seconds, minTime)
 			assert.LessOrEqual(t, seconds, minTime*2)

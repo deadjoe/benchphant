@@ -235,6 +235,17 @@ func TestUpdateTransactionTime(t *testing.T) {
 }
 
 func TestIsDeadlock(t *testing.T) {
-	assert.False(t, isDeadlock(nil))
-	assert.False(t, isDeadlock(errors.New("random error")))
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock: %v", err)
+	}
+	defer db.Close()
+
+	stats := &TransactionStats{}
+	logger := &MockLogger{}
+	executor := NewTransactionExecutor(db, stats, logger)
+
+	assert.False(t, executor.IsDeadlock(nil))
+	assert.False(t, executor.IsDeadlock(errors.New("random error")))
+	assert.True(t, executor.IsDeadlock(errors.New("deadlock detected")))
 }

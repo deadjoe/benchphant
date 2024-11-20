@@ -9,57 +9,40 @@ import (
 	"time"
 )
 
-// DBType represents the type of database
-type DBType string
+// DatabaseType represents the type of database
+type DatabaseType string
 
 const (
-	// MySQL database type
-	MySQL DBType = "mysql"
-	// PostgreSQL database type
-	PostgreSQL DBType = "postgresql"
+	// DatabaseTypeMySQL represents MySQL database
+	DatabaseTypeMySQL DatabaseType = "mysql"
+	// DatabaseTypePostgreSQL represents PostgreSQL database
+	DatabaseTypePostgreSQL DatabaseType = "postgresql"
 )
 
-// String implements fmt.Stringer interface
-func (t DBType) String() string {
-	return string(t)
+// Database represents a database instance
+type Database struct {
+	ID          int64        `json:"id"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Type        DatabaseType `json:"type"`
+	Host        string       `json:"host"`
+	Port        int          `json:"port"`
+	Username    string       `json:"username"`
+	Password    string       `json:"password"`
+	Database    string       `json:"database"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
-// DBConnection represents a database connection configuration
-type DBConnection struct {
-	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
-	Type        DBType    `json:"type"`
-	Host        string    `json:"host"`
-	Port        int       `json:"port"`
-	Username    string    `json:"username"`
-	Password    string    `json:"password"`
-	Database    string    `json:"database"`
-	Options     string    `json:"options"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	LastUsedAt  time.Time `json:"last_used_at"`
-	IsCluster   bool      `json:"is_cluster"`
-	RouterHost  string    `json:"router_host,omitempty"`
-	RouterPort  int       `json:"router_port,omitempty"`
-	MaxIdleConn int       `json:"max_idle_conn"`
-	MaxOpenConn int       `json:"max_open_conn"`
-
-	// Internal fields for encrypted data
-	encryptedPassword string
-
-	// Underlying database connection
-	db *sql.DB
-}
-
-// Validate checks if the connection configuration is valid
-func (c *DBConnection) Validate() error {
+// Validate checks if the database configuration is valid
+func (c *Database) Validate() error {
 	if c.Name == "" {
 		return errors.New("name is required")
 	}
 	if c.Type == "" {
 		return errors.New("type is required")
 	}
-	if c.Type != MySQL && c.Type != PostgreSQL {
+	if c.Type != DatabaseTypeMySQL && c.Type != DatabaseTypePostgreSQL {
 		return fmt.Errorf("invalid database type: %s", c.Type)
 	}
 	if c.Host == "" {
@@ -74,138 +57,52 @@ func (c *DBConnection) Validate() error {
 	if c.Database == "" {
 		return errors.New("database is required")
 	}
-	if c.MaxIdleConn <= 0 {
-		return errors.New("max idle connections must be positive")
-	}
-	if c.MaxOpenConn <= 0 {
-		return errors.New("max open connections must be positive")
-	}
-	if c.IsCluster {
-		if c.RouterHost == "" {
-			return errors.New("router host is required for cluster mode")
-		}
-		if c.RouterPort == 0 {
-			return errors.New("router port is required for cluster mode")
-		}
-	}
 	return nil
-}
-
-// SetEncryptedPassword sets the encrypted password and clears the plain text password
-func (c *DBConnection) SetEncryptedPassword(encrypted string) {
-	c.encryptedPassword = encrypted
-	c.Password = "" // Clear plain text password for security
-}
-
-// GetEncryptedPassword returns the encrypted password
-func (c *DBConnection) GetEncryptedPassword() string {
-	return c.encryptedPassword
 }
 
 // DSN returns the data source name for the database connection
-func (c *DBConnection) DSN() string {
-	host := c.getHost()
-	port := c.getPort()
-	options := c.getOptions()
-
+func (c *Database) DSN() string {
 	switch c.Type {
-	case MySQL:
-		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?%s", c.Username, c.Password, host, port, c.Database, options)
-	case PostgreSQL:
-		return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s %s", host, port, c.Username, c.Password, c.Database, options)
+	case DatabaseTypeMySQL:
+		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", c.Username, c.Password, c.Host, c.Port, c.Database)
+	case DatabaseTypePostgreSQL:
+		return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s", c.Host, c.Port, c.Username, c.Password, c.Database)
 	default:
 		return ""
 	}
-}
-
-// getHost returns the appropriate host based on whether it's a cluster or not
-func (c *DBConnection) getHost() string {
-	if c.IsCluster && c.RouterHost != "" {
-		return c.RouterHost
-	}
-	return c.Host
-}
-
-// getPort returns the appropriate port based on whether it's a cluster or not
-func (c *DBConnection) getPort() int {
-	if c.IsCluster && c.RouterPort != 0 {
-		return c.RouterPort
-	}
-	return c.Port
-}
-
-// getOptions returns the connection options with defaults if not specified
-func (c *DBConnection) getOptions() string {
-	if c.Options != "" {
-		return c.Options
-	}
-
-	switch c.Type {
-	case MySQL:
-		return "parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_unicode_ci"
-	case PostgreSQL:
-		return "sslmode=disable"
-	default:
-		return ""
-	}
-}
-
-// DB returns the underlying sql.DB
-func (c *DBConnection) DB() *sql.DB {
-	return c.db
-}
-
-// SetDB sets the underlying sql.DB
-func (c *DBConnection) SetDB(db *sql.DB) {
-	c.db = db
-}
-
-// Close closes the database connection
-func (c *DBConnection) Close() error {
-	if c.db != nil {
-		return c.db.Close()
-	}
-	return nil
-}
-
-// NewDBConnection creates a new database connection
-func NewDBConnection(db *sql.DB) *DBConnection {
-	conn := &DBConnection{}
-	conn.SetDB(db)
-	return conn
 }
 
 // ConnectionManager represents a manager of database connections
 type ConnectionManager struct {
 	mu          sync.Mutex
-	connections []*DBConnection
-	available   chan *DBConnection
+	connections []*sql.DB
+	available   chan *sql.DB
 }
 
 // NewConnectionManager creates a new connection manager
-func NewConnectionManager(conn *DBConnection) (*ConnectionManager, error) {
-	if conn == nil {
+func NewConnectionManager(db *sql.DB) (*ConnectionManager, error) {
+	if db == nil {
 		return nil, fmt.Errorf("connection cannot be nil")
 	}
 	return &ConnectionManager{
-		connections: []*DBConnection{conn},
-		available:   make(chan *DBConnection, 1),
+		connections: []*sql.DB{db},
+		available:   make(chan *sql.DB, 1),
 	}, nil
 }
 
 // Get gets a connection from the manager
-func (p *ConnectionManager) Get() (*DBConnection, error) {
+func (p *ConnectionManager) Get() (*sql.DB, error) {
 	select {
 	case conn := <-p.available:
 		return conn, nil
 	default:
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		
+
 		if len(p.connections) == 0 {
 			return nil, nil
 		}
-		
+
 		conn := p.connections[0]
 		p.connections = p.connections[1:]
 		return conn, nil
@@ -213,10 +110,10 @@ func (p *ConnectionManager) Get() (*DBConnection, error) {
 }
 
 // Put puts a connection back into the manager
-func (p *ConnectionManager) Put(conn *DBConnection) {
+func (p *ConnectionManager) Put(conn *sql.DB) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	p.connections = append(p.connections, conn)
 	select {
 	case p.available <- conn:
@@ -248,10 +145,10 @@ func (p *ConnectionManager) TestConnection() error {
 	}
 	defer p.Put(conn)
 
-	if conn.db == nil {
+	if conn == nil {
 		return fmt.Errorf("no database connection available")
 	}
-	return conn.db.Ping()
+	return conn.Ping()
 }
 
 // Stats returns the connection manager statistics
@@ -261,7 +158,7 @@ func (p *ConnectionManager) Stats() json.RawMessage {
 
 	stats := map[string]interface{}{
 		"total_connections": len(p.connections),
-		"available":        len(p.available),
+		"available":         len(p.available),
 	}
 	data, _ := json.Marshal(stats)
 	return data

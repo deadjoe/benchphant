@@ -14,7 +14,7 @@ type Config struct {
 	LogLevel          string `json:"log_level"`
 	StoragePath       string `json:"storage_path"`
 	EncryptionKeyFile string `json:"encryption_key_file"`
-	WebDir           string `json:"web_dir"`
+	WebDir            string `json:"web_dir"`
 }
 
 // DefaultConfig returns the default configuration
@@ -25,7 +25,7 @@ func DefaultConfig() *Config {
 		LogLevel:          "info",
 		StoragePath:       "./data/benchphant.db",
 		EncryptionKeyFile: "./data/key.txt",
-		WebDir:           "./web/dist",
+		WebDir:            "./web/dist",
 	}
 }
 
@@ -126,7 +126,7 @@ func (c *Config) Validate() error {
 	if c.Port <= 0 || c.Port > 65535 {
 		return fmt.Errorf("invalid port: %d", c.Port)
 	}
-	
+
 	validLevels := map[string]bool{
 		"debug": true,
 		"info":  true,
@@ -137,7 +137,7 @@ func (c *Config) Validate() error {
 	if !validLevels[c.LogLevel] {
 		return fmt.Errorf("invalid log level: %s", c.LogLevel)
 	}
-	
+
 	if c.StoragePath == "" {
 		return fmt.Errorf("storage path is required")
 	}

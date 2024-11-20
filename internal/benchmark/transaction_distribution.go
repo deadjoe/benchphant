@@ -25,7 +25,7 @@ const (
 
 // TransactionWeights represents the TPC-C specified weights for each transaction type
 type TransactionWeights struct {
-	NewOrderWeight     float64
+	NewOrderWeight    float64
 	PaymentWeight     float64
 	OrderStatusWeight float64
 	DeliveryWeight    float64
@@ -62,7 +62,7 @@ var KeyingTimes = map[OLTPTransactionType]float64{
 func NewTPCCDistribution() *TPCCDistribution {
 	return &TPCCDistribution{
 		weights: TransactionWeights{
-			NewOrderWeight:     45.0,
+			NewOrderWeight:    45.0,
 			PaymentWeight:     43.0,
 			OrderStatusWeight: 4.0,
 			DeliveryWeight:    4.0,

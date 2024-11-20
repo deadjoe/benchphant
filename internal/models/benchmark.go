@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -23,16 +24,17 @@ const (
 
 // Benchmark represents a database benchmark configuration
 type Benchmark struct {
-	ID            int64          `json:"id"`
-	Name          string         `json:"name"`
-	Description   string         `json:"description"`
-	ConnectionID  int64          `json:"connection_id"`
-	QueryTemplate string         `json:"query_template"`
-	NumThreads    int           `json:"num_threads"`
-	Duration      time.Duration  `json:"duration"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	ID            int64           `json:"id"`
+	Name          string          `json:"name"`
+	Description   string          `json:"description"`
+	ConnectionID  int64           `json:"connection_id"`
+	QueryTemplate string          `json:"query_template"`
+	NumThreads    int             `json:"num_threads"`
+	Duration      time.Duration   `json:"duration"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 	Status        BenchmarkStatus `json:"status"`
+	Config        json.RawMessage `json:"config"`
 }
 
 // BenchmarkResult represents the result of a benchmark run
@@ -49,6 +51,36 @@ type BenchmarkResult struct {
 	MaxLatency     time.Duration `json:"max_latency"`
 	QPS            float64       `json:"qps"`
 	Error          string        `json:"error,omitempty"`
+}
+
+// BenchmarkConfig represents the configuration for starting a benchmark
+type BenchmarkConfig struct {
+	ConnectionID string `json:"connection_id"`
+	Duration     int    `json:"duration"`
+	Threads      int    `json:"threads"`
+	Query        string `json:"query"`
+	Name         string `json:"name"`
+	Description  string `json:"description,omitempty"`
+}
+
+// Validate validates the benchmark configuration
+func (c *BenchmarkConfig) Validate() error {
+	if c.ConnectionID == "" {
+		return errors.New("connection_id is required")
+	}
+	if c.Duration <= 0 {
+		return errors.New("duration must be greater than 0")
+	}
+	if c.Threads <= 0 {
+		return errors.New("threads must be greater than 0")
+	}
+	if c.Query == "" {
+		return errors.New("query is required")
+	}
+	if c.Name == "" {
+		return errors.New("name is required")
+	}
+	return nil
 }
 
 // Validate validates the benchmark configuration

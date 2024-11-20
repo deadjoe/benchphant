@@ -254,9 +254,9 @@ func TestGenerateOrderData(t *testing.T) {
 						o,                // o_id
 						d,                // o_d_id
 						w,                // o_w_id
-						rnd.Intn(3000) + 1, // o_c_id
+						rnd.Intn(3000)+1, // o_c_id
 						sqlmock.AnyArg(), // o_entry_d
-						rnd.Intn(10) + 1,  // o_carrier_id
+						rnd.Intn(10)+1,   // o_carrier_id
 						olCnt,            // o_ol_cnt
 						1,                // o_all_local
 					).WillReturnResult(sqlmock.NewResult(1, 1))
@@ -265,16 +265,16 @@ func TestGenerateOrderData(t *testing.T) {
 				for ol := 1; ol <= olCnt; ol++ {
 					mock.ExpectExec("INSERT INTO order_line").
 						WithArgs(
-							o,                // ol_o_id
-							d,                // ol_d_id
-							w,                // ol_w_id
-							ol,               // ol_number
-							rnd.Intn(100000) + 1, // ol_i_id
-							w,                // ol_supply_w_id
-							sqlmock.AnyArg(), // ol_delivery_d
-							5,                // ol_quantity
-							0.00,             // ol_amount
-							"dist_info",      // ol_dist_info
+							o,                  // ol_o_id
+							d,                  // ol_d_id
+							w,                  // ol_w_id
+							ol,                 // ol_number
+							rnd.Intn(100000)+1, // ol_i_id
+							w,                  // ol_supply_w_id
+							sqlmock.AnyArg(),   // ol_delivery_d
+							5,                  // ol_quantity
+							0.00,               // ol_amount
+							"dist_info",        // ol_dist_info
 						).WillReturnResult(sqlmock.NewResult(1, 1))
 				}
 

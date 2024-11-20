@@ -19,9 +19,9 @@ func TestConnectionManager(t *testing.T) {
 				name: "ValidConnection",
 				conn: &DBConnection{
 					Name:     "test",
-					Type:    MySQL,
-					Host:    "localhost",
-					Port:    3306,
+					Type:     MySQL,
+					Host:     "localhost",
+					Port:     3306,
 					Username: "root",
 					Password: "password",
 					Database: "test",
@@ -29,8 +29,8 @@ func TestConnectionManager(t *testing.T) {
 				wantErr: false,
 			},
 			{
-				name: "NilConnection",
-				conn: nil,
+				name:    "NilConnection",
+				conn:    nil,
 				wantErr: true,
 			},
 		}
@@ -54,23 +54,23 @@ func TestConnectionManager(t *testing.T) {
 	t.Run("GetPut", func(t *testing.T) {
 		conn := &DBConnection{
 			Name:     "test",
-			Type:    MySQL,
-			Host:    "localhost",
-			Port:    3306,
+			Type:     MySQL,
+			Host:     "localhost",
+			Port:     3306,
 			Username: "root",
 			Password: "password",
 			Database: "test",
 		}
-		
+
 		manager, err := NewConnectionManager(conn)
 		assert.NoError(t, err)
-		
+
 		// Test Get
 		got, err := manager.Get()
 		assert.NoError(t, err)
 		assert.Equal(t, conn, got)
 		assert.Empty(t, manager.connections)
-		
+
 		// Test Put
 		manager.Put(got)
 		assert.NotEmpty(t, manager.connections)
@@ -80,17 +80,17 @@ func TestConnectionManager(t *testing.T) {
 	t.Run("TestConnection", func(t *testing.T) {
 		conn := &DBConnection{
 			Name:     "test",
-			Type:    MySQL,
-			Host:    "localhost",
-			Port:    3306,
+			Type:     MySQL,
+			Host:     "localhost",
+			Port:     3306,
 			Username: "root",
 			Password: "password",
 			Database: "test",
 		}
-		
+
 		manager, err := NewConnectionManager(conn)
 		assert.NoError(t, err)
-		
+
 		// Note: This will fail since we're not actually connecting to a database
 		assert.Error(t, manager.TestConnection())
 	})

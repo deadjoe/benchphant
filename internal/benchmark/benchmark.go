@@ -2,7 +2,9 @@ package benchmark
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -10,230 +12,259 @@ import (
 	"go.uber.org/zap"
 )
 
-// Status represents the benchmark status
-type Status string
-
-const (
-	// StatusIdle means the benchmark is not running
-	StatusIdle Status = "idle"
-	// StatusRunning means the benchmark is currently running
-	StatusRunning Status = "running"
-	// StatusFinished means the benchmark has finished
-	StatusFinished Status = "finished"
-)
-
-// Config represents benchmark configuration
-type Config struct {
-	// Duration is the duration of the benchmark
-	Duration time.Duration `json:"duration"`
-
-	// Concurrency is the number of concurrent workers
-	Concurrency int `json:"concurrency"`
-
-	// QueryRate is the target number of queries per second
-	QueryRate int `json:"query_rate"`
-
-	// Queries is the list of SQL queries to execute
-	Queries []string `json:"queries"`
-
-	// QueryDistribution is the type of query distribution to use
-	QueryDistribution QueryDistributionType `json:"query_distribution"`
-
-	// QueryWeights is the list of weights for each query when using weighted distribution
-	QueryWeights []float64 `json:"query_weights,omitempty"`
-
-	// WarmupTime is the duration to warm up before starting measurements
-	WarmupTime time.Duration `json:"warmup_time"`
-
-	// Transactions is the list of transactions to execute
-	Transactions []*Transaction `json:"transactions"`
-
-	// TransactionRate is the target number of transactions per second
-	TransactionRate int `json:"transaction_rate"`
-
-	// TransactionDistribution is the type of transaction distribution to use
-	TransactionDistribution string `json:"transaction_distribution"`
-
-	// Distribution is the TPC-C transaction distribution configuration
-	Distribution *TPCCDistribution `json:"distribution"`
-}
-
-// Result represents benchmark results
-type Result struct {
-	StartTime       time.Time                `json:"start_time"`
-	EndTime         time.Time                `json:"end_time"`
-	Duration        time.Duration            `json:"duration"`
-	WarmupTime      time.Duration            `json:"warmup_time"`
-	Stats           *TransactionStats        `json:"stats"`
-	QueryStats      map[string]QueryStats   `json:"query_stats"`
+// BenchmarkStatus represents the current status of a benchmark
+type BenchmarkStatus struct {
+	Status   string                 `json:"status"`
+	Progress float64                `json:"progress"`
+	Metrics  map[string]interface{} `json:"metrics"`
 }
 
 // Benchmark represents a database benchmark
 type Benchmark struct {
-	config        *Config
-	connection    *models.DBConnection
-	pool          *models.ConnectionManager
-	status        Status
-	result        *Result
-	logger        *zap.Logger
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	mu            sync.RWMutex
-	txExecutor    *TransactionExecutor
+	config     *models.Benchmark
+	connection *models.DBConnection
+	db        *sql.DB
+	logger     *zap.Logger
+	status     BenchmarkStatus
+	startTime  time.Time
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	mu         sync.RWMutex
+	done       chan struct{}
+	ctx        context.Context
 }
 
-// New creates a new benchmark
-func New(config *Config, conn *models.DBConnection, logger *zap.Logger) (*Benchmark, error) {
-	if err := validateConfig(config); err != nil {
-		return nil, err
-	}
+// NewBenchmark creates a new benchmark
+func NewBenchmark(config *models.Benchmark, conn *models.DBConnection, logger *zap.Logger) *Benchmark {
+	metrics := make(map[string]interface{})
+	metrics["queries"] = float64(0)
+	metrics["errors"] = float64(0)
+	metrics["latency_sum"] = float64(0)
+	metrics["latency_min"] = float64(0)
+	metrics["latency_max"] = float64(0)
+	metrics["latency_avg"] = float64(0)
+	metrics["latency_p95"] = float64(0)
+	metrics["latency_p99"] = float64(0)
+	metrics["qps"] = float64(0)
+	metrics["latencies"] = make([]float64, 0, 1000)
 
-	// Get connection pool for the database
-	connManager, err := models.NewConnectionManager(conn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create connection manager: %w", err)
-	}
-
-	stats := &TransactionStats{}
-	result := &Result{
-		Stats: stats,
-		QueryStats: make(map[string]QueryStats),
-	}
-
-	zapLogger := NewZapLogger(logger)
-	txExecutor := NewTransactionExecutor(conn.DB(), stats, zapLogger)
-
-	b := &Benchmark{
+	return &Benchmark{
 		config:     config,
 		connection: conn,
-		pool:      connManager,
-		status:    StatusIdle,
-		result:    result,
-		logger:    logger,
-		txExecutor: txExecutor,
+		db:         conn.DB,
+		logger:     logger,
+		done:       make(chan struct{}),
+		status: BenchmarkStatus{
+			Status:  string(models.BenchmarkStatusPending),
+			Metrics: metrics,
+		},
 	}
-
-	return b, nil
 }
 
 // Start starts the benchmark
-func (b *Benchmark) Start(ctx context.Context) error {
+func (b *Benchmark) Start() error {
 	b.mu.Lock()
-	if b.status == StatusRunning {
-		b.mu.Unlock()
+	defer b.mu.Unlock()
+
+	// Validate configuration
+	if b.config.NumThreads <= 0 {
+		return fmt.Errorf("number of threads must be greater than 0")
+	}
+	if b.config.Duration <= 0 {
+		return fmt.Errorf("duration must be greater than 0")
+	}
+	if b.config.QueryTemplate == "" {
+		return fmt.Errorf("query template cannot be empty")
+	}
+
+	// Check if already running
+	if b.status.Status == string(models.BenchmarkStatusRunning) {
 		return fmt.Errorf("benchmark is already running")
 	}
 
-	b.status = StatusRunning
-	b.result.StartTime = time.Now()
-	b.mu.Unlock()
-
-	ctx, b.cancel = context.WithTimeout(ctx, b.config.Duration)
-	defer b.cancel()
-
-	// Start worker goroutines
-	for i := 0; i < b.config.Concurrency; i++ {
-		b.wg.Add(1)
-		go b.worker(ctx)
+	// Reset metrics
+	b.status.Metrics = map[string]interface{}{
+		"qps":         float64(0),
+		"latency_avg": float64(0),
+		"latency_p95": float64(0),
+		"latency_p99": float64(0),
+		"errors":      float64(0),
 	}
 
-	// Wait for all workers to finish
-	b.wg.Wait()
+	// Initialize benchmark
+	if b.connection == nil {
+		b.status.Status = string(models.BenchmarkStatusFailed)
+		return fmt.Errorf("database connection is nil")
+	}
 
-	b.mu.Lock()
-	b.status = StatusFinished
-	b.result.EndTime = time.Now()
-	b.result.Duration = b.result.EndTime.Sub(b.result.StartTime)
-	b.mu.Unlock()
+	// Reset done channel
+	b.done = make(chan struct{})
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), b.config.Duration)
+	b.ctx = ctx
+	b.cancel = cancel
+
+	// Prepare statement
+	stmt, err := b.db.PrepareContext(b.ctx, b.config.QueryTemplate)
+	if err != nil {
+		b.status.Status = string(models.BenchmarkStatusFailed)
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+
+	// Start benchmark
+	b.startTime = time.Now()
+	b.status.Status = string(models.BenchmarkStatusRunning)
+	b.status.Progress = 0
+
+	// Start workers
+	b.wg.Add(b.config.NumThreads)
+	for i := 0; i < b.config.NumThreads; i++ {
+		go b.worker(b.ctx, stmt, i)
+	}
+
+	// Start progress updater
+	go b.updateProgress(b.ctx, stmt)
 
 	return nil
 }
 
 // Stop stops the benchmark
 func (b *Benchmark) Stop() {
-	if b.cancel != nil {
+	b.mu.Lock()
+	if b.status.Status == string(models.BenchmarkStatusRunning) {
 		b.cancel()
 	}
+	b.mu.Unlock()
 }
 
 // Status returns the current benchmark status
-func (b *Benchmark) Status() Status {
+func (b *Benchmark) Status() BenchmarkStatus {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.status
 }
 
-// Result returns the benchmark results
-func (b *Benchmark) Result() *Result {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	return b.result
-}
-
-// worker runs transactions in a loop
-func (b *Benchmark) worker(ctx context.Context) {
-	defer b.wg.Done()
+// worker runs queries in a loop
+func (b *Benchmark) worker(ctx context.Context, stmt *sql.Stmt, id int) {
+	b.logger.Debug("worker started", zap.Int("worker_id", id))
+	defer func() {
+		b.logger.Debug("worker stopped", zap.Int("worker_id", id))
+		b.wg.Done()
+	}()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			tx := b.selectTransaction()
-			if tx == nil {
-				continue
+			if err := b.runQuery(ctx, stmt); err != nil {
+				if err == context.Canceled || err == context.DeadlineExceeded {
+					return
+				}
+				b.logger.Error("query failed", zap.Error(err), zap.Int("worker", id))
+				b.mu.Lock()
+				b.status.Metrics["errors"] = b.status.Metrics["errors"].(float64) + 1
+				b.status.Status = string(models.BenchmarkStatusFailed)
+				b.mu.Unlock()
+				b.cancel() // Cancel other workers when one fails
+				return
 			}
+			// Update metrics for successful query
+			b.mu.Lock()
+			b.status.Metrics["qps"] = b.status.Metrics["qps"].(float64) + 1
+			b.mu.Unlock()
 
-			// Add think time
-			if tx.ThinkTime > 0 {
-				time.Sleep(tx.ThinkTime)
-			}
-
-			// Add keying time
-			if tx.KeyingTime > 0 {
-				time.Sleep(tx.KeyingTime)
-			}
-
-			if err := b.txExecutor.Execute(ctx, tx); err != nil {
-				b.logger.Error("Failed to execute transaction",
-					zap.String("type", tx.Type),
-					zap.Error(err))
-			}
+			// Sleep a tiny bit to avoid overwhelming the mock
+			time.Sleep(time.Millisecond)
 		}
 	}
 }
 
-// selectTransaction selects a transaction based on the configured distribution
-func (b *Benchmark) selectTransaction() *Transaction {
-	if b.config.Distribution == nil {
-		b.config.Distribution = NewTPCCDistribution()
+// runQuery executes a single query and updates metrics
+func (b *Benchmark) runQuery(ctx context.Context, stmt *sql.Stmt) error {
+	start := time.Now()
+	_, err := stmt.ExecContext(ctx)
+	duration := time.Since(start)
+
+	if err != nil {
+		if err == context.Canceled || err == context.DeadlineExceeded {
+			return err
+		}
+		return fmt.Errorf("query execution failed: %w", err)
 	}
 
-	txType := b.config.Distribution.SelectTransactionType()
-	for _, tx := range b.config.Transactions {
-		if tx.Type == string(txType) {
-			return tx
-		}
-	}
+	// Update latency metrics
+	b.mu.Lock()
+	latencyAvg := b.status.Metrics["latency_avg"].(float64)
+	qps := b.status.Metrics["qps"].(float64)
+	b.status.Metrics["latency_avg"] = (latencyAvg*qps + duration.Seconds()) / (qps + 1)
+	b.status.Metrics["latency_p95"] = duration.Seconds() // Simplified for now
+	b.status.Metrics["latency_p99"] = duration.Seconds() // Simplified for now
+	b.mu.Unlock()
+
 	return nil
 }
 
-// validateConfig validates the benchmark configuration
-func validateConfig(config *Config) error {
-	if config == nil {
-		return fmt.Errorf("config is required")
+// updateProgress updates the benchmark progress
+func (b *Benchmark) updateProgress(ctx context.Context, stmt *sql.Stmt) {
+	defer func() {
+		stmt.Close()
+		b.wg.Wait() // Wait for all workers to finish before updating final status
+		b.mu.Lock()
+		if b.status.Status != string(models.BenchmarkStatusFailed) {
+			if ctx.Err() == context.Canceled {
+				b.status.Status = string(models.BenchmarkStatusCancelled)
+			} else {
+				b.status.Status = string(models.BenchmarkStatusCompleted)
+			}
+		}
+		b.status.Progress = 100
+		b.mu.Unlock()
+		close(b.done)
+	}()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			b.mu.Lock()
+			elapsed := time.Since(b.startTime)
+			progress := (elapsed.Seconds() / b.config.Duration.Seconds()) * 100
+			b.status.Progress = math.Min(100, progress)
+			b.mu.Unlock()
+		}
 	}
-	if config.Duration <= 0 {
-		return fmt.Errorf("duration must be greater than 0")
-	}
-	if config.Concurrency <= 0 {
-		return fmt.Errorf("concurrency must be greater than 0")
-	}
-	if config.QueryRate <= 0 {
-		return fmt.Errorf("query rate must be greater than 0")
-	}
-	if len(config.Transactions) == 0 {
-		return fmt.Errorf("at least one transaction is required")
-	}
-	return nil
+}
+
+// Factory represents a benchmark factory
+type Factory interface {
+	// Create creates a new benchmark instance
+	Create(config *models.Benchmark, conn *models.DBConnection, logger *zap.Logger) (Benchmark, error)
+}
+
+// RegisterFactory registers a benchmark factory
+func RegisterFactory(name string, factory Factory) {
+	factories[name] = factory
+}
+
+var factories = make(map[string]Factory)
+
+// Result represents the result of a benchmark run
+type Result struct {
+	Name              string                 `json:"name"`
+	Duration          time.Duration          `json:"duration"`
+	TotalTransactions int64                  `json:"total_transactions"`
+	TPS               float64                `json:"tps"`
+	LatencyAvg        time.Duration          `json:"latency_avg"`
+	LatencyP95        time.Duration          `json:"latency_p95"`
+	LatencyP99        time.Duration          `json:"latency_p99"`
+	Errors            int64                  `json:"errors"`
+	StartTime         time.Time              `json:"start_time"`
+	EndTime           time.Time              `json:"end_time"`
+	Metrics           map[string]interface{} `json:"metrics"`
 }

@@ -54,14 +54,15 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 git clone https://github.com/YOUR_USERNAME/benchphant.git
 
 # Add upstream remote
-git remote add upstream https://github.com/deadjoe/benchphant.git
+git remote add upstream https://github.com/joe/benchphant.git
 
 # Install dependencies
 go mod download
 cd web && npm install
 
-# Run tests
-go test ./...
+# Run tests and linters
+go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+golangci-lint run
 cd web && npm test
 ```
 
@@ -77,9 +78,13 @@ cd web && npm test
 ### Go Styleguide
 
 * Follow the official Go style guide
-* Use `gofmt`
-* Write descriptive comments
-* Include tests for new code
+* Use `gofmt -s` for simplified code
+* Run `golangci-lint` before committing
+* Write descriptive comments for exported items
+* Include tests with good coverage for new code
+* Handle errors appropriately
+* Use meaningful variable names
+* Follow the project's error handling patterns
 
 ### JavaScript Styleguide
 

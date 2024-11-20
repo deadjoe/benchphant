@@ -29,15 +29,15 @@ func (g *DataGenerator) GenerateWarehouseData() error {
 
 	for w := 1; w <= g.warehouseCount; w++ {
 		_, err := g.db.Exec(query,
-			w,                     // w_id
+			w,                      // w_id
 			fmt.Sprintf("W_%d", w), // w_name
-			"Street 1",            // w_street_1
-			"Street 2",            // w_street_2
-			"City",                // w_city
-			"ST",                  // w_state
-			g.generateZip(),       // w_zip
-			rand.Float64() * 0.2,  // w_tax
-			300000.00,            // w_ytd
+			"Street 1",             // w_street_1
+			"Street 2",             // w_street_2
+			"City",                 // w_city
+			"ST",                   // w_state
+			g.generateZip(),        // w_zip
+			rand.Float64()*0.2,     // w_tax
+			300000.00,              // w_ytd
 		)
 		if err != nil {
 			return err
@@ -54,17 +54,17 @@ func (g *DataGenerator) GenerateDistrictData() error {
 	for w := 1; w <= g.warehouseCount; w++ {
 		for d := 1; d <= 10; d++ {
 			_, err := g.db.Exec(query,
-				d,                        // d_id
-				w,                        // d_w_id
+				d,                            // d_id
+				w,                            // d_w_id
 				fmt.Sprintf("D_%d_%d", w, d), // d_name
-				"Street 1",               // d_street_1
-				"Street 2",               // d_street_2
-				"City",                   // d_city
-				"ST",                     // d_state
-				g.generateZip(),          // d_zip
-				rand.Float64() * 0.2,     // d_tax
-				30000.00,                // d_ytd
-				3001,                    // d_next_o_id
+				"Street 1",                   // d_street_1
+				"Street 2",                   // d_street_2
+				"City",                       // d_city
+				"ST",                         // d_state
+				g.generateZip(),              // d_zip
+				rand.Float64()*0.2,           // d_tax
+				30000.00,                     // d_ytd
+				3001,                         // d_next_o_id
 			)
 			if err != nil {
 				return err
@@ -89,27 +89,27 @@ func (g *DataGenerator) GenerateCustomerData() error {
 			for c := 1; c <= 3000; c++ {
 				// Insert customer
 				_, err := g.db.Exec(customerQuery,
-					c,                    // c_id
-					d,                    // c_d_id
-					w,                    // c_w_id
-					"FirstName",          // c_first
-					"MI",                 // c_middle
-					"LastName",           // c_last
-					"Street 1",           // c_street_1
-					"Street 2",           // c_street_2
-					"City",               // c_city
-					"ST",                 // c_state
-					g.generateZip(),      // c_zip
+					c,                       // c_id
+					d,                       // c_d_id
+					w,                       // c_w_id
+					"FirstName",             // c_first
+					"MI",                    // c_middle
+					"LastName",              // c_last
+					"Street 1",              // c_street_1
+					"Street 2",              // c_street_2
+					"City",                  // c_city
+					"ST",                    // c_state
+					g.generateZip(),         // c_zip
 					g.generatePhoneNumber(), // c_phone
-					time.Now(),           // c_since
-					"GC",                 // c_credit
-					50000.00,             // c_credit_lim
-					rand.Float64() * 0.5,  // c_discount
-					-10.00,               // c_balance
-					10.00,                // c_ytd_payment
-					1,                    // c_payment_cnt
-					0,                    // c_delivery_cnt
-					"Customer Data",      // c_data
+					time.Now(),              // c_since
+					"GC",                    // c_credit
+					50000.00,                // c_credit_lim
+					rand.Float64()*0.5,      // c_discount
+					-10.00,                  // c_balance
+					10.00,                   // c_ytd_payment
+					1,                       // c_payment_cnt
+					0,                       // c_delivery_cnt
+					"Customer Data",         // c_data
 				)
 				if err != nil {
 					return err
@@ -117,14 +117,14 @@ func (g *DataGenerator) GenerateCustomerData() error {
 
 				// Insert history
 				_, err = g.db.Exec(historyQuery,
-					c,           // h_c_id
-					d,           // h_c_d_id
-					w,           // h_c_w_id
-					d,           // h_d_id
-					w,           // h_w_id
-					time.Now(),  // h_date
-					10.00,       // h_amount
-					"History",   // h_data
+					c,          // h_c_id
+					d,          // h_c_d_id
+					w,          // h_c_w_id
+					d,          // h_d_id
+					w,          // h_w_id
+					time.Now(), // h_date
+					10.00,      // h_amount
+					"History",  // h_data
 				)
 				if err != nil {
 					return err
@@ -142,11 +142,11 @@ func (g *DataGenerator) GenerateItemData() error {
 
 	for i := 1; i <= 100000; i++ {
 		_, err := g.db.Exec(query,
-			i,                     // i_id
-			i,                     // i_im_id
+			i,                         // i_id
+			i,                         // i_im_id
 			fmt.Sprintf("Item_%d", i), // i_name
-			rand.Float64() * 100.0,    // i_price
-			"Item Data",           // i_data
+			rand.Float64()*100.0,      // i_price
+			"Item Data",               // i_data
 		)
 		if err != nil {
 			return err
@@ -166,21 +166,21 @@ func (g *DataGenerator) GenerateStockData() error {
 			_, err := g.db.Exec(query,
 				i,                // s_i_id
 				w,                // s_w_id
-				rand.Intn(91) + 10, // s_quantity (10-100)
-				"dist_01",         // s_dist_01
-				"dist_02",         // s_dist_02
-				"dist_03",         // s_dist_03
-				"dist_04",         // s_dist_04
-				"dist_05",         // s_dist_05
-				"dist_06",         // s_dist_06
-				"dist_07",         // s_dist_07
-				"dist_08",         // s_dist_08
-				"dist_09",         // s_dist_09
-				"dist_10",         // s_dist_10
+				rand.Intn(91)+10, // s_quantity (10-100)
+				"dist_01",        // s_dist_01
+				"dist_02",        // s_dist_02
+				"dist_03",        // s_dist_03
+				"dist_04",        // s_dist_04
+				"dist_05",        // s_dist_05
+				"dist_06",        // s_dist_06
+				"dist_07",        // s_dist_07
+				"dist_08",        // s_dist_08
+				"dist_09",        // s_dist_09
+				"dist_10",        // s_dist_10
 				0,                // s_ytd
 				0,                // s_order_cnt
 				0,                // s_remote_cnt
-				"Stock Data",      // s_data
+				"Stock Data",     // s_data
 			)
 			if err != nil {
 				return err
@@ -223,9 +223,9 @@ func (g *DataGenerator) GenerateOrderData() error {
 					o,                // o_id
 					d,                // o_d_id
 					w,                // o_w_id
-					rnd.Intn(3000) + 1, // o_c_id
+					rnd.Intn(3000)+1, // o_c_id
 					time.Now(),       // o_entry_d
-					rnd.Intn(10) + 1,  // o_carrier_id
+					rnd.Intn(10)+1,   // o_carrier_id
 					olCnt,            // o_ol_cnt
 					1,                // o_all_local
 				)
@@ -236,16 +236,16 @@ func (g *DataGenerator) GenerateOrderData() error {
 				// Insert order lines
 				for ol := 1; ol <= olCnt; ol++ {
 					_, err = g.db.Exec(orderLineQuery,
-						o,                // ol_o_id
-						d,                // ol_d_id
-						w,                // ol_w_id
-						ol,               // ol_number
-						rnd.Intn(100000) + 1, // ol_i_id
-						w,                // ol_supply_w_id
-						time.Now(),       // ol_delivery_d
-						5,                // ol_quantity
-						0.00,             // ol_amount
-						"dist_info",      // ol_dist_info
+						o,                  // ol_o_id
+						d,                  // ol_d_id
+						w,                  // ol_w_id
+						ol,                 // ol_number
+						rnd.Intn(100000)+1, // ol_i_id
+						w,                  // ol_supply_w_id
+						time.Now(),         // ol_delivery_d
+						5,                  // ol_quantity
+						0.00,               // ol_amount
+						"dist_info",        // ol_dist_info
 					)
 					if err != nil {
 						return err

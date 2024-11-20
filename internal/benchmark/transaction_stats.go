@@ -7,15 +7,15 @@ import (
 
 // TransactionStats holds statistics about transactions
 type TransactionStats struct {
-	mu                    sync.Mutex
-	TotalTransactions     int64         `json:"total_transactions"`
-	SuccessfulTransactions int64        `json:"successful_transactions"`
-	FailedTransactions    int64         `json:"failed_transactions"`
-	TotalDuration        time.Duration `json:"total_duration"`
-	MinDuration          time.Duration `json:"min_duration"`
-	MaxDuration          time.Duration `json:"max_duration"`
-	P95Duration          time.Duration `json:"p95_duration"`
-	LockStats            LockStats     `json:"lock_stats"`
+	mu                     sync.Mutex
+	TotalTransactions      int64         `json:"total_transactions"`
+	SuccessfulTransactions int64         `json:"successful_transactions"`
+	FailedTransactions     int64         `json:"failed_transactions"`
+	TotalDuration          time.Duration `json:"total_duration"`
+	MinDuration            time.Duration `json:"min_duration"`
+	MaxDuration            time.Duration `json:"max_duration"`
+	P95Duration            time.Duration `json:"p95_duration"`
+	LockStats              LockStats     `json:"lock_stats"`
 }
 
 // LockStats holds statistics about database locks and deadlocks

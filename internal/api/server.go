@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/deadjoe/benchphant/internal/benchmark"
 	"github.com/deadjoe/benchphant/internal/config"
 	"github.com/deadjoe/benchphant/internal/database"
 	"github.com/deadjoe/benchphant/internal/models"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -51,17 +53,25 @@ func (s *Server) Shutdown() error {
 	return s.server.Close()
 }
 
+// registerRoutes registers all API routes
 func (s *Server) registerRoutes() {
-	mux := http.NewServeMux()
+	router := gin.Default()
 
 	// API routes
-	mux.HandleFunc("/api/v1/connections", s.handleConnections)
-	mux.HandleFunc("/api/v1/connections/test", s.handleTestConnection)
+	v1 := router.Group("/api/v1")
+	{
+		v1.GET("/connections", gin.WrapF(s.handleConnections))
+		v1.POST("/connections", gin.WrapF(s.handleConnections))
+		v1.POST("/connections/test", gin.WrapF(s.handleTestConnection))
+		v1.POST("/benchmark/start", gin.WrapF(s.handleBenchmarkStart))
+		v1.POST("/benchmark/stop", gin.WrapF(s.handleBenchmarkStop))
+		v1.GET("/benchmark/status", gin.WrapF(s.handleBenchmarkStatus))
+	}
 
 	// Static files
-	mux.Handle("/", http.FileServer(http.Dir("web/dist")))
+	router.Static("/", "web/dist")
 
-	s.server.Handler = mux
+	s.server.Handler = router
 }
 
 // ErrorResponse represents an error response
@@ -131,4 +141,103 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// handleBenchmarkStart handles the benchmark start request
+func (s *Server) handleBenchmarkStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
+		return
+	}
+
+	var config models.BenchmarkConfig
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	if err := config.Validate(); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.activeBenchmark != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "benchmark already running"})
+		return
+	}
+
+	// Get the connection
+	conn, err := s.manager.GetConnection(config.ConnectionID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("connection not found: %v", err)})
+		return
+	}
+
+	// Create and start the benchmark
+	b := &models.Benchmark{
+		Name:          config.Name,
+		Description:   config.Description,
+		ConnectionID:  conn.ID,
+		QueryTemplate: config.Query,
+		NumThreads:    config.Threads,
+		Duration:      time.Duration(config.Duration) * time.Second,
+		Status:        models.BenchmarkStatusRunning,
+	}
+
+	if err := b.Validate(); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	s.activeBenchmark = benchmark.NewBenchmark(b, conn, s.logger)
+	go s.activeBenchmark.Start()
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// handleBenchmarkStop handles the benchmark stop request
+func (s *Server) handleBenchmarkStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.activeBenchmark == nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "no active benchmark"})
+		return
+	}
+
+	s.activeBenchmark.Stop()
+	s.activeBenchmark = nil
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// handleBenchmarkStatus handles the benchmark status request
+func (s *Server) handleBenchmarkStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
+		return
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.activeBenchmark == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "no active benchmark"})
+		return
+	}
+
+	status := s.activeBenchmark.Status()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":   status.Status,
+		"progress": status.Progress,
+		"metrics":  status.Metrics,
+	})
 }

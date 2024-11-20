@@ -1,0 +1,44 @@
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - web/
+    - vendor/
+    - testdata/
+
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unused
+    - misspell
+    - prealloc
+    - unconvert
+    - gocritic
+
+linters-settings:
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+  gofmt:
+    simplify: true
+  govet:
+    check-shadowing: true
+  errcheck:
+    check-type-assertions: true
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck

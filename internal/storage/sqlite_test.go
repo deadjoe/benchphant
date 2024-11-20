@@ -51,7 +51,7 @@ func TestSQLiteStorage(t *testing.T) {
 
 	// Test storing and retrieving metrics
 	labels := map[string]string{
-		"database": "test_db",
+		"database":  "test_db",
 		"operation": "insert",
 	}
 

@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
 	_ "github.com/mattn/go-sqlite3"
+	"time"
 )
 
 // SQLiteStorage implements persistent storage using SQLite
@@ -172,11 +172,11 @@ func (s *SQLiteStorage) GetMetrics(benchmarkID string) ([]map[string]interface{}
 	var metrics []map[string]interface{}
 	for rows.Next() {
 		var (
-			name      string
-			typ       string
-			value     float64
+			name       string
+			typ        string
+			value      float64
 			labelsJSON []byte
-			timestamp time.Time
+			timestamp  time.Time
 		)
 
 		if err := rows.Scan(&name, &typ, &value, &labelsJSON, &timestamp); err != nil {

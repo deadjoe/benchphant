@@ -17,9 +17,9 @@ func TestBenchmark(t *testing.T) {
 			{
 				name: "ValidBenchmark",
 				bench: &Benchmark{
-					Name:           "test_benchmark",
-					Description:    "Test benchmark description",
-					ConnectionID:   1,
+					Name:          "test_benchmark",
+					Description:   "Test benchmark description",
+					ConnectionID:  1,
 					QueryTemplate: "SELECT * FROM test",
 					NumThreads:    10,
 					Duration:      time.Minute * 5,
@@ -32,9 +32,9 @@ func TestBenchmark(t *testing.T) {
 			{
 				name: "EmptyName",
 				bench: &Benchmark{
-					Name:           "",
-					Description:    "Test benchmark description",
-					ConnectionID:   1,
+					Name:          "",
+					Description:   "Test benchmark description",
+					ConnectionID:  1,
 					QueryTemplate: "SELECT * FROM test",
 					NumThreads:    10,
 					Duration:      time.Minute * 5,
@@ -47,9 +47,9 @@ func TestBenchmark(t *testing.T) {
 			{
 				name: "InvalidConnectionID",
 				bench: &Benchmark{
-					Name:           "test_benchmark",
-					Description:    "Test benchmark description",
-					ConnectionID:   0,
+					Name:          "test_benchmark",
+					Description:   "Test benchmark description",
+					ConnectionID:  0,
 					QueryTemplate: "SELECT * FROM test",
 					NumThreads:    10,
 					Duration:      time.Minute * 5,
@@ -62,9 +62,9 @@ func TestBenchmark(t *testing.T) {
 			{
 				name: "EmptyQueryTemplate",
 				bench: &Benchmark{
-					Name:           "test_benchmark",
-					Description:    "Test benchmark description",
-					ConnectionID:   1,
+					Name:          "test_benchmark",
+					Description:   "Test benchmark description",
+					ConnectionID:  1,
 					QueryTemplate: "",
 					NumThreads:    10,
 					Duration:      time.Minute * 5,
@@ -77,9 +77,9 @@ func TestBenchmark(t *testing.T) {
 			{
 				name: "InvalidNumThreads",
 				bench: &Benchmark{
-					Name:           "test_benchmark",
-					Description:    "Test benchmark description",
-					ConnectionID:   1,
+					Name:          "test_benchmark",
+					Description:   "Test benchmark description",
+					ConnectionID:  1,
 					QueryTemplate: "SELECT * FROM test",
 					NumThreads:    0,
 					Duration:      time.Minute * 5,
@@ -92,9 +92,9 @@ func TestBenchmark(t *testing.T) {
 			{
 				name: "InvalidDuration",
 				bench: &Benchmark{
-					Name:           "test_benchmark",
-					Description:    "Test benchmark description",
-					ConnectionID:   1,
+					Name:          "test_benchmark",
+					Description:   "Test benchmark description",
+					ConnectionID:  1,
 					QueryTemplate: "SELECT * FROM test",
 					NumThreads:    10,
 					Duration:      0,
@@ -107,9 +107,9 @@ func TestBenchmark(t *testing.T) {
 			{
 				name: "InvalidStatus",
 				bench: &Benchmark{
-					Name:           "test_benchmark",
-					Description:    "Test benchmark description",
-					ConnectionID:   1,
+					Name:          "test_benchmark",
+					Description:   "Test benchmark description",
+					ConnectionID:  1,
 					QueryTemplate: "SELECT * FROM test",
 					NumThreads:    10,
 					Duration:      time.Minute * 5,
@@ -144,16 +144,16 @@ func TestBenchmark(t *testing.T) {
 	t.Run("BenchmarkResult", func(t *testing.T) {
 		result := &BenchmarkResult{
 			BenchmarkID:    1,
-			StartTime:     time.Now(),
-			EndTime:       time.Now().Add(time.Minute),
-			TotalQueries:  1000,
-			SuccessCount:  950,
-			FailureCount:  50,
+			StartTime:      time.Now(),
+			EndTime:        time.Now().Add(time.Minute),
+			TotalQueries:   1000,
+			SuccessCount:   950,
+			FailureCount:   50,
 			AverageLatency: time.Millisecond * 100,
-			MinLatency:    time.Millisecond * 50,
-			MaxLatency:    time.Millisecond * 200,
-			QPS:           100.0,
-			Error:         "test error",
+			MinLatency:     time.Millisecond * 50,
+			MaxLatency:     time.Millisecond * 200,
+			QPS:            100.0,
+			Error:          "test error",
 		}
 
 		assert.NotNil(t, result)
