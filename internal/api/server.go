@@ -63,9 +63,6 @@ func (s *Server) registerRoutes() {
 		v1.GET("/connections", gin.WrapF(s.handleConnections))
 		v1.POST("/connections", gin.WrapF(s.handleConnections))
 		v1.POST("/connections/test", gin.WrapF(s.handleTestConnection))
-		v1.POST("/benchmark/start", gin.WrapF(s.handleBenchmarkStart))
-		v1.POST("/benchmark/stop", gin.WrapF(s.handleBenchmarkStop))
-		v1.GET("/benchmark/status", gin.WrapF(s.handleBenchmarkStatus))
 	}
 
 	// Static files
@@ -123,34 +120,11 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var conn models.DBConnection
-	if err := json.NewDecoder(r.Body).Decode(&conn); err != nil {
-		s.logger.Error("Failed to decode connection", zap.Error(err))
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid connection data"})
-		return
-	}
-
-	if err := s.manager.TestConnection(&conn); err != nil {
-		s.logger.Error("Connection test failed", zap.Error(err))
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("Connection test failed: %v", err)})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
-}
-
-// handleBenchmarkStart handles the benchmark start request
-func (s *Server) handleBenchmarkStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
 		return
 	}
 
-	var config models.BenchmarkConfig
+	var config models.ConnectionConfig
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
 		return
@@ -161,83 +135,5 @@ func (s *Server) handleBenchmarkStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.activeBenchmark != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "benchmark already running"})
-		return
-	}
-
-	// Get the connection
-	conn, err := s.manager.GetConnection(config.ConnectionID)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("connection not found: %v", err)})
-		return
-	}
-
-	// Create and start the benchmark
-	b := &models.Benchmark{
-		Name:          config.Name,
-		Description:   config.Description,
-		ConnectionID:  conn.ID,
-		QueryTemplate: config.Query,
-		NumThreads:    config.Threads,
-		Duration:      time.Duration(config.Duration) * time.Second,
-		Status:        models.BenchmarkStatusRunning,
-	}
-
-	if err := b.Validate(); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	s.activeBenchmark = benchmark.NewBenchmark(b, conn, s.logger)
-	go s.activeBenchmark.Start()
-
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
-}
-
-// handleBenchmarkStop handles the benchmark stop request
-func (s *Server) handleBenchmarkStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
-		return
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.activeBenchmark == nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "no active benchmark"})
-		return
-	}
-
-	s.activeBenchmark.Stop()
-	s.activeBenchmark = nil
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
-}
-
-// handleBenchmarkStatus handles the benchmark status request
-func (s *Server) handleBenchmarkStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "method not allowed"})
-		return
-	}
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.activeBenchmark == nil {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "no active benchmark"})
-		return
-	}
-
-	status := s.activeBenchmark.Status()
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":   status.Status,
-		"progress": status.Progress,
-		"metrics":  status.Metrics,
-	})
 }

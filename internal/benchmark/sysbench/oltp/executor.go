@@ -3,7 +3,6 @@ package oltp
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"math/rand"
 	"sort"
 	"sync"

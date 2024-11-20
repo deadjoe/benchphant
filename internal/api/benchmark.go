@@ -125,10 +125,10 @@ func (s *Server) handleBenchmarkStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := struct {
-		Status string            `json:"status"`
-		Result *benchmark.Result `json:"result,omitempty"`
+		Status benchmark.BenchmarkStatus `json:"status"`
+		Result *benchmark.Result        `json:"result,omitempty"`
 	}{
-		Status: string(b.Status()),
+		Status: b.Status(),
 		Result: b.Result(),
 	}
 
