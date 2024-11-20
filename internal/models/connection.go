@@ -34,28 +34,28 @@ var (
 
 // DBConnection represents a database connection
 type DBConnection struct {
-	ID           int64     `json:"id"`
-	Name         string    `json:"name"`
-	Type         DBType    `json:"type"`
-	Host         string    `json:"host"`
-	Port         int       `json:"port"`
-	Database     string    `json:"database"`
-	Username     string    `json:"username"`
-	Password     string    `json:"-"`
-	Description  string    `json:"description"`
-	Driver       string    `json:"driver"`
-	DSN          string    `json:"dsn"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	LastUsedAt   time.Time `json:"last_used_at"`
-	MaxIdleConn  int       `json:"max_idle_conn"`
-	MaxOpenConn  int       `json:"max_open_conn"`
-	Options      map[string]string `json:"options"`
-	IsCluster    bool      `json:"is_cluster"`
-	RouterHost   string    `json:"router_host"`
-	RouterPort   int       `json:"router_port"`
+	ID          int64             `json:"id"`
+	Name        string            `json:"name"`
+	Type        DBType            `json:"type"`
+	Host        string            `json:"host"`
+	Port        int               `json:"port"`
+	Database    string            `json:"database"`
+	Username    string            `json:"username"`
+	Password    string            `json:"-"`
+	Description string            `json:"description"`
+	Driver      string            `json:"driver"`
+	DSN         string            `json:"dsn"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	LastUsedAt  time.Time         `json:"last_used_at"`
+	MaxIdleConn int               `json:"max_idle_conn"`
+	MaxOpenConn int               `json:"max_open_conn"`
+	Options     map[string]string `json:"options"`
+	IsCluster   bool              `json:"is_cluster"`
+	RouterHost  string            `json:"router_host"`
+	RouterPort  int               `json:"router_port"`
 
-	DB               *sql.DB `json:"-"`
+	DB                *sql.DB `json:"-"`
 	encryptedPassword string
 }
 

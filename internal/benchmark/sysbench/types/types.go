@@ -52,23 +52,23 @@ const (
 
 // OLTPTestConfig represents the configuration for OLTP tests
 type OLTPTestConfig struct {
-	TestType      TestType      `json:"test_type"`
-	TableSize     int           `json:"table_size"`
-	NumTables     int           `json:"num_tables"`
-	NumThreads    int           `json:"num_threads"`
-	Duration      time.Duration `json:"duration"`
-	ReportInterval time.Duration `json:"report_interval"`
-	ReadOnly      bool          `json:"read_only"`
-	PointSelects  int           `json:"point_selects"`
-	SimpleRanges  int           `json:"simple_ranges"`
-	SumRanges     int           `json:"sum_ranges"`
-	OrderRanges   int           `json:"order_ranges"`
-	DistinctRanges int          `json:"distinct_ranges"`
-	IndexUpdates  int           `json:"index_updates"`
-	NonIndexUpdates int         `json:"non_index_updates"`
-	DeleteInserts int           `json:"delete_inserts"`
-	WriteWeight   float64       `json:"write_weight"`
-	ReadWeight    float64       `json:"read_weight"`
+	TestType        TestType      `json:"test_type"`
+	TableSize       int           `json:"table_size"`
+	NumTables       int           `json:"num_tables"`
+	NumThreads      int           `json:"num_threads"`
+	Duration        time.Duration `json:"duration"`
+	ReportInterval  time.Duration `json:"report_interval"`
+	ReadOnly        bool          `json:"read_only"`
+	PointSelects    int           `json:"point_selects"`
+	SimpleRanges    int           `json:"simple_ranges"`
+	SumRanges       int           `json:"sum_ranges"`
+	OrderRanges     int           `json:"order_ranges"`
+	DistinctRanges  int           `json:"distinct_ranges"`
+	IndexUpdates    int           `json:"index_updates"`
+	NonIndexUpdates int           `json:"non_index_updates"`
+	DeleteInserts   int           `json:"delete_inserts"`
+	WriteWeight     float64       `json:"write_weight"`
+	ReadWeight      float64       `json:"read_weight"`
 }
 
 // TestConfig represents the configuration for a sysbench OLTP test
@@ -104,11 +104,11 @@ type TestConfig struct {
 // TestStats represents test statistics
 type TestStats struct {
 	TotalTransactions int64
-	TPS              float64
-	LatencyAvg       time.Duration
-	LatencyP95       time.Duration
-	LatencyP99       time.Duration
-	Errors           int64
+	TPS               float64
+	LatencyAvg        time.Duration
+	LatencyP95        time.Duration
+	LatencyP99        time.Duration
+	Errors            int64
 }
 
 // AddTransaction adds a transaction to the statistics
