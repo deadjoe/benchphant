@@ -23,7 +23,7 @@ type BenchmarkStatus struct {
 type Benchmark struct {
 	config     *models.Benchmark
 	connection *models.DBConnection
-	db        *sql.DB
+	db         *sql.DB
 	logger     *zap.Logger
 	status     BenchmarkStatus
 	startTime  time.Time
