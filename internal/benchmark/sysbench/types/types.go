@@ -2,6 +2,7 @@ package types
 
 import (
 	"time"
+	"sort"
 )
 
 // ScenarioType represents different predefined test scenarios
@@ -70,6 +71,29 @@ type OLTPTestConfig struct {
 	ReadWeight      float64       `json:"read_weight"`
 }
 
+// NewOLTPTestConfig creates a new OLTP test configuration with default values
+func NewOLTPTestConfig() *OLTPTestConfig {
+	return &OLTPTestConfig{
+		TestType:        TestTypeOLTPReadWrite,
+		TableSize:       10000,
+		NumTables:       1,
+		NumThreads:      1,
+		Duration:        10 * time.Second,
+		ReportInterval:  1 * time.Second,
+		ReadOnly:        false,
+		PointSelects:    10,
+		SimpleRanges:    1,
+		SumRanges:       1,
+		OrderRanges:     1,
+		DistinctRanges:  1,
+		IndexUpdates:    1,
+		NonIndexUpdates: 1,
+		DeleteInserts:   1,
+		WriteWeight:     0.5,
+		ReadWeight:      0.5,
+	}
+}
+
 // TestConfig represents the configuration for a sysbench OLTP test
 type TestConfig struct {
 	// TestType is the type of OLTP test to run
@@ -103,34 +127,69 @@ type TestConfig struct {
 // TestStats represents test statistics
 type TestStats struct {
 	TotalTransactions int64
-	TPS               float64
-	LatencyAvg        time.Duration
-	LatencyP95        time.Duration
-	LatencyP99        time.Duration
-	Errors            int64
+	TotalErrors      int64
+	TPS              float64
+	AvgLatency      time.Duration
+	P95Latency      time.Duration
+	P99Latency      time.Duration
+	MaxLatency      time.Duration
+	MinLatency      time.Duration
+	Latencies       []time.Duration
+}
+
+// NewTestStats creates a new test statistics object
+func NewTestStats() *TestStats {
+	return &TestStats{
+		Latencies: make([]time.Duration, 0),
+	}
 }
 
 // AddTransaction adds a transaction to the statistics
-func (s *TestStats) AddTransaction(duration time.Duration) {
+func (s *TestStats) AddTransaction(latency time.Duration) {
 	s.TotalTransactions++
-	s.LatencyAvg = (s.LatencyAvg*time.Duration(s.TotalTransactions-1) + duration) / time.Duration(s.TotalTransactions)
-	// Note: P95 and P99 calculations would require storing all durations and sorting them
-	// For simplicity, we're not implementing them here
+	s.Latencies = append(s.Latencies, latency)
+	s.updateLatencyStats(latency)
+}
+
+// AddError increments the error count
+func (s *TestStats) AddError() {
+	s.TotalErrors++
+}
+
+// updateLatencyStats updates latency statistics
+func (s *TestStats) updateLatencyStats(latency time.Duration) {
+	if s.MinLatency == 0 || latency < s.MinLatency {
+		s.MinLatency = latency
+	}
+	if latency > s.MaxLatency {
+		s.MaxLatency = latency
+	}
+
+	// Update average latency
+	totalLatency := s.AvgLatency.Nanoseconds() * int64(s.TotalTransactions-1)
+	totalLatency += latency.Nanoseconds()
+	s.AvgLatency = time.Duration(totalLatency / s.TotalTransactions)
+
+	// Sort latencies for percentile calculation
+	if len(s.Latencies) > 1 {
+		sort.Slice(s.Latencies, func(i, j int) bool {
+			return s.Latencies[i] < s.Latencies[j]
+		})
+
+		// Calculate P95 and P99 latencies
+		p95Index := int(float64(len(s.Latencies)) * 0.95)
+		p99Index := int(float64(len(s.Latencies)) * 0.99)
+
+		s.P95Latency = s.Latencies[p95Index]
+		s.P99Latency = s.Latencies[p99Index]
+	}
 }
 
 // Report represents a test report
 type Report struct {
-	TestName          string
-	Duration          time.Duration
-	TotalTransactions int64
-	TPS               float64
-	LatencyAvg        time.Duration
-	LatencyP95        time.Duration
-	LatencyP99        time.Duration
-	Errors            int64
-	StartTime         time.Time
-	EndTime           time.Time
-	Metrics           map[string]interface{}
+	Name     string
+	Duration time.Duration
+	Stats    *TestStats
 }
 
 // TestReport represents the results of a sysbench OLTP test
@@ -166,11 +225,11 @@ type Scenario struct {
 
 // Test represents a single test within a scenario
 type Test struct {
-	Name     string        `json:"name"`
-	Type     TestType      `json:"type"`
-	Config   *TestConfig   `json:"config"`
-	Weight   float64       `json:"weight"`
-	Duration time.Duration `json:"duration"`
+	Name     string          `json:"name"`
+	Type     TestType        `json:"type"`
+	Config   *OLTPTestConfig `json:"config"`
+	Weight   float64         `json:"weight"`
+	Duration time.Duration   `json:"duration"`
 }
 
 // Result represents a single operation result

@@ -57,6 +57,49 @@ type Config struct {
 	ConnMaxLifetime time.Duration `json:"conn_max_lifetime"` // Maximum connection lifetime
 }
 
+// Validate validates the configuration
+func (c *Config) Validate() error {
+	if c.Warehouses <= 0 {
+		return fmt.Errorf("warehouses must be greater than 0")
+	}
+	if c.Terminals <= 0 {
+		return fmt.Errorf("terminals must be greater than 0")
+	}
+	if c.Duration <= 0 {
+		return fmt.Errorf("duration must be greater than 0")
+	}
+	if c.ReportInterval <= 0 {
+		return fmt.Errorf("report interval must be greater than 0")
+	}
+
+	// Validate transaction mix percentages
+	total := c.NewOrderPercentage + c.PaymentPercentage + c.OrderStatusPercentage + c.DeliveryPercentage + c.StockLevelPercentage
+	if total != 100 {
+		return fmt.Errorf("transaction mix percentages must sum to 100, got %f", total)
+	}
+
+	// Validate new order items range
+	if c.NewOrderItemsMin <= 0 || c.NewOrderItemsMax <= 0 {
+		return fmt.Errorf("new order items min/max must be greater than 0")
+	}
+	if c.NewOrderItemsMin > c.NewOrderItemsMax {
+		return fmt.Errorf("new order items min must be less than or equal to max")
+	}
+
+	// Validate connection pool settings
+	if c.MaxIdleConns < 0 {
+		return fmt.Errorf("max idle connections must be non-negative")
+	}
+	if c.MaxOpenConns < 0 {
+		return fmt.Errorf("max open connections must be non-negative")
+	}
+	if c.ConnMaxLifetime < 0 {
+		return fmt.Errorf("connection max lifetime must be non-negative")
+	}
+
+	return nil
+}
+
 // GetDSN returns the database connection string
 func (c *DatabaseConfig) GetDSN() string {
 	switch c.Type {
@@ -105,34 +148,51 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Stats represents the TPC-C benchmark statistics
+// Stats represents TPCC test statistics
 type Stats struct {
-	StartTime time.Time     // Test start time
-	EndTime   time.Time     // Test end time
-	Duration  time.Duration // Test duration
+	TotalTransactions int64
+	TPS              float64
+	LatencyAvg       time.Duration
+	LatencyP95       time.Duration
+	LatencyP99       time.Duration
+	Errors           int64
+	StartTime        time.Time
+	EndTime          time.Time
+	Metrics          map[string]float64
+}
 
-	// Transaction counts
-	TotalTransactions int64   // Total number of transactions
-	TotalErrors       int64   // Total number of errors
-	TPMc              float64 // Transactions per minute (new orders)
-	Efficiency        float64 // Percentage of successful transactions
+// NewStats creates a new Stats instance
+func NewStats() *Stats {
+	return &Stats{
+		StartTime: time.Now(),
+		Metrics:   make(map[string]float64),
+	}
+}
 
-	// Transaction type counts
-	NewOrderCount    int64
-	PaymentCount     int64
-	OrderStatusCount int64
-	DeliveryCount    int64
-	StockLevelCount  int64
+// AddTransaction adds a transaction to the stats
+func (s *Stats) AddTransaction(latency time.Duration, err error) {
+	s.TotalTransactions++
+	if err != nil {
+		s.Errors++
+		return
+	}
 
-	// Error counts by transaction type
-	NewOrderErrors    int64
-	PaymentErrors     int64
-	OrderStatusErrors int64
-	DeliveryErrors    int64
-	StockLevelErrors  int64
+	// Update latency metrics
+	s.LatencyAvg = time.Duration((float64(s.LatencyAvg)*float64(s.TotalTransactions-1) + float64(latency)) / float64(s.TotalTransactions))
+	
+	// Update metrics map
+	s.Metrics["total_transactions"] = float64(s.TotalTransactions)
+	s.Metrics["errors"] = float64(s.Errors)
+	s.Metrics["latency_avg_ms"] = float64(s.LatencyAvg.Milliseconds())
+}
 
-	// Latency statistics
-	OverallLatencyAvg float64 // Average latency in milliseconds
+// Finalize calculates final statistics
+func (s *Stats) Finalize() {
+	s.EndTime = time.Now()
+	duration := s.EndTime.Sub(s.StartTime)
+	s.TPS = float64(s.TotalTransactions) / duration.Seconds()
+	s.Metrics["tps"] = s.TPS
+	s.Metrics["duration_seconds"] = duration.Seconds()
 }
 
 // Schema represents the TPC-C database schema

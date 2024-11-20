@@ -2,10 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/deadjoe/benchphant/internal/benchmark"
+	"github.com/deadjoe/benchphant/internal/models"
 	"go.uber.org/zap"
 )
 
@@ -57,24 +61,24 @@ func (s *Server) handleBenchmarkStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create benchmark config
-	config := &benchmark.Config{
-		Duration:          duration,
-		Concurrency:       req.Concurrency,
-		QueryRate:         req.QueryRate,
-		Queries:           req.Queries,
-		QueryDistribution: benchmark.QueryDistributionType(req.Distribution),
-		QueryWeights:      req.QueryWeights,
+	config := &models.BenchmarkConfig{
+		ConnectionID: strconv.FormatInt(req.ConnectionID, 10),
+		Duration:    int(duration.Seconds()),
+		Threads:     req.Concurrency,
+		Query:       strings.Join(req.Queries, ";"),
+		Name:        "API Benchmark",
+		Description: fmt.Sprintf("API Benchmark with %d threads and %d QPS", req.Concurrency, req.QueryRate),
 	}
 
 	// Create and start benchmark
-	b, err := benchmark.New(config, conn, s.logger)
+	b, err := benchmark.NewBenchmark(config, conn)
 	if err != nil {
 		s.logger.Error("Failed to create benchmark", zap.Error(err))
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to create benchmark"})
 		return
 	}
 
-	if err := b.Start(r.Context()); err != nil {
+	if err := b.Start(); err != nil {
 		s.logger.Error("Failed to start benchmark", zap.Error(err))
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to start benchmark"})
 		return
@@ -104,7 +108,7 @@ func (s *Server) handleBenchmarkStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b.Stop() // Stop() doesn't return an error
+	b.Stop()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
 }
 
@@ -125,11 +129,11 @@ func (s *Server) handleBenchmarkStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := struct {
-		Status benchmark.BenchmarkStatus `json:"status"`
-		Result *benchmark.Result        `json:"result,omitempty"`
+		Status models.BenchmarkStatus `json:"status"`
+		Stats  map[string]interface{} `json:"stats,omitempty"`
 	}{
 		Status: b.Status(),
-		Result: b.Result(),
+		Stats:  b.Status().Metrics,
 	}
 
 	writeJSON(w, http.StatusOK, status)

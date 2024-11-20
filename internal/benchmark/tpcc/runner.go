@@ -40,7 +40,7 @@ func NewRunner(db *sql.DB, config *Config, logger *zap.Logger) *Runner {
 		db:       db,
 		config:   config,
 		logger:   logger,
-		stats:    &Stats{},
+		stats:    NewStats(),
 		executor: NewTransactionExecutor(db, config),
 		stopChan: make(chan struct{}),
 	}
@@ -53,32 +53,44 @@ func (r *Runner) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize test: %w", err)
 	}
 
-	// Start terminals
-	r.startTerminals()
+	// Create worker channels
+	workCh := make(chan struct{}, r.config.NumThreads)
+	errCh := make(chan error, r.config.NumThreads)
 
-	// Start monitoring
-	monitorCtx, cancelMonitor := context.WithCancel(ctx)
-	defer cancelMonitor()
-	go r.monitor(monitorCtx)
-
-	// Wait for test duration or context cancellation
-	select {
-	case <-ctx.Done():
-		r.logger.Info("Test cancelled")
-		r.stop()
-		return ctx.Err()
-	case <-time.After(r.config.Duration):
-		r.logger.Info("Test duration reached")
-		r.stop()
+	// Start workers
+	for i := 0; i < r.config.NumThreads; i++ {
+		go r.worker(ctx, workCh, errCh)
 	}
 
-	// Wait for all terminals to stop
-	r.wg.Wait()
+	// Parse duration
+	duration, err := time.ParseDuration(r.config.Duration)
+	if err != nil {
+		return fmt.Errorf("invalid duration: %w", err)
+	}
 
-	// Calculate final statistics
-	r.calculateStats()
+	// Run test for the specified duration
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
 
-	return nil
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errCh:
+			return err
+		case <-timer.C:
+			close(workCh)
+			r.stats.Finalize()
+			return nil
+		default:
+			workCh <- struct{}{}
+		}
+	}
+}
+
+// GetStats returns the current test statistics
+func (r *Runner) GetStats() *Stats {
+	return r.stats
 }
 
 // initialize prepares the database for testing
@@ -95,9 +107,7 @@ func (r *Runner) initialize(ctx context.Context) error {
 	)
 
 	// Initialize statistics
-	r.stats = &Stats{
-		StartTime: time.Now(),
-	}
+	r.stats.StartTime = time.Now()
 
 	return nil
 }
@@ -187,11 +197,6 @@ func (r *Runner) calculateStats() {
 		zap.Float64("efficiency", r.stats.Efficiency),
 		zap.Float64("latency_avg_ms", r.stats.OverallLatencyAvg),
 	)
-}
-
-// GetStats returns the current test statistics
-func (r *Runner) GetStats() Stats {
-	return *r.stats
 }
 
 // run executes transactions for a terminal

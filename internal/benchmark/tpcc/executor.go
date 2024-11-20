@@ -72,11 +72,11 @@ func (e *TransactionExecutor) getCustomerInfo(ctx context.Context, tx *sql.Tx, w
 	return cDiscount, cLast, cCredit, nil
 }
 
-// createOrder creates a new order entry
-func (e *TransactionExecutor) createOrder(ctx context.Context, tx *sql.Tx, orderID, dID, wID, cID int, itemCount int, allLocal int, now time.Time) error {
+// createOrder creates a new order
+func (e *TransactionExecutor) createOrder(ctx context.Context, tx *sql.Tx, wID, dID, cID int, numItems int, allLocal int) error {
 	_, err := tx.ExecContext(ctx,
-		"INSERT INTO orders (o_id, o_d_id, o_w_id, o_c_id, o_entry_d, o_ol_cnt, o_all_local) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		orderID, dID, wID, cID, now, itemCount, allLocal)
+		"INSERT INTO orders (o_w_id, o_d_id, o_c_id, o_ol_cnt, o_all_local) VALUES (?, ?, ?, ?, ?)",
+		wID, dID, cID, numItems, allLocal)
 	if err != nil {
 		return fmt.Errorf("create order: %w", err)
 	}
@@ -185,8 +185,11 @@ func (e *TransactionExecutor) ExecuteNewOrder(ctx context.Context, tx *NewOrder)
 	}
 
 	// Create order and new order entry
-	now := time.Now()
-	if err := e.createOrder(ctx, dbTx, dNextOID, tx.dID, tx.wID, tx.cID, len(tx.itemIDs), tx.allLocal, now); err != nil {
+	allLocal := 1
+	if !tx.allLocal {
+		allLocal = 0
+	}
+	if err := e.createOrder(ctx, dbTx, tx.wID, tx.dID, tx.cID, len(tx.itemIDs), allLocal); err != nil {
 		return err
 	}
 
@@ -288,8 +291,6 @@ func (e *TransactionExecutor) ExecuteDelivery(ctx context.Context, tx *Delivery)
 	}
 	defer dbTx.Rollback()
 
-	now := time.Now()
-
 	// Process each district
 	for dID := 1; dID <= 10; dID++ {
 		// Get oldest new order
@@ -333,7 +334,7 @@ func (e *TransactionExecutor) ExecuteDelivery(ctx context.Context, tx *Delivery)
 		// Update order lines
 		_, err = dbTx.ExecContext(ctx,
 			"UPDATE order_line SET ol_delivery_d = ? WHERE ol_w_id = ? AND ol_d_id = ? AND ol_o_id = ?",
-			now, tx.wID, dID, oID)
+			time.Now(), tx.wID, dID, oID)
 		if err != nil {
 			return fmt.Errorf("update order lines: %w", err)
 		}

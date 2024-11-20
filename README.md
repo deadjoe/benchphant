@@ -3,7 +3,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/deadjoe/benchphant?v=2)](https://goreportcard.com/report/github.com/deadjoe/benchphant)
 [![GoDoc](https://pkg.go.dev/badge/github.com/deadjoe/benchphant)](https://pkg.go.dev/github.com/deadjoe/benchphant)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Build Status](https://github.com/deadjoe/benchphant/actions/workflows/test.yml/badge.svg)](https://github.com/deadjoe/benchphant/actions)
+[![Build Status](https://github.com/deadjoe/benchphant/actions/workflows/ci.yml/badge.svg)](https://github.com/deadjoe/benchphant/actions)
 [![codecov](https://codecov.io/gh/deadjoe/benchphant/branch/main/graph/badge.svg)](https://codecov.io/gh/deadjoe/benchphant)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/deadjoe/benchphant)](https://github.com/deadjoe/benchphant)
 [![Release](https://img.shields.io/github/v/release/deadjoe/benchphant)](https://github.com/deadjoe/benchphant/releases)

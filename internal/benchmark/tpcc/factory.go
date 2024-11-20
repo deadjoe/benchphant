@@ -11,7 +11,7 @@ import (
 	"github.com/deadjoe/benchphant/internal/models"
 )
 
-// Factory creates TPC-C benchmark instances
+// Factory creates TPC-C benchmarks
 type Factory struct{}
 
 // NewFactory creates a new TPC-C benchmark factory
@@ -34,10 +34,6 @@ func (f *Factory) Create(config *models.Benchmark, conn *models.DBConnection, lo
 		return nil, fmt.Errorf("connection is required")
 	}
 
-	if logger == nil {
-		return nil, fmt.Errorf("logger is required")
-	}
-
 	// Parse TPC-C specific config
 	var tpccConfig Config
 	if err := json.Unmarshal(config.Config, &tpccConfig); err != nil {
@@ -50,18 +46,12 @@ func (f *Factory) Create(config *models.Benchmark, conn *models.DBConnection, lo
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	// Create and return benchmark
-	benchmark := &TPCCBenchmark{
-		config: &tpccConfig,
-		db:     db,
-		logger: logger,
-	}
-
-	return benchmark, nil
+	// Create benchmark
+	b := NewTPCCBenchmark(&tpccConfig, db, logger)
+	return b, nil
 }
 
 func init() {
-	benchmark.RegisterFactory("tpcc", func(logger *zap.Logger) benchmark.Factory {
-		return NewFactory()
-	})
+	// Register factory
+	benchmark.RegisterFactory("tpcc", &Factory{})
 }

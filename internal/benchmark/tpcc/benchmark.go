@@ -59,40 +59,77 @@ func (b *TPCCBenchmark) Setup(ctx context.Context) error {
 
 // Run executes the benchmark
 func (b *TPCCBenchmark) Run(ctx context.Context) (*benchmark.Result, error) {
-	startTime := time.Now()
-
-	// Run the benchmark
-	if err := b.runner.Run(ctx); err != nil {
-		return nil, fmt.Errorf("run benchmark: %w", err)
+	if err := b.Setup(ctx); err != nil {
+		return nil, fmt.Errorf("setup: %w", err)
 	}
 
-	// Get statistics
-	stats := b.runner.GetStats()
-	duration := time.Since(startTime)
-
-	// Convert metrics to map[string]interface{}
-	metrics := make(map[string]interface{})
-	for k, v := range stats.Metrics {
-		metrics[k] = interface{}(v)
-	}
-
-	// Create result
-	result := &benchmark.Result{
-		Name:      b.Name(),
-		StartTime: startTime,
-		Duration:  duration,
-		Metrics:   metrics,
-	}
-
-	b.logger.Info("Benchmark completed",
-		zap.Float64("tpmC", stats.TPMc),
-		zap.Float64("efficiency", stats.Efficiency),
-		zap.Int64("total_transactions", stats.TotalTransactions),
-		zap.Int64("total_errors", stats.TotalErrors),
-		zap.Float64("overall_latency_avg", stats.OverallLatencyAvg),
+	b.logger.Info("Starting TPC-C benchmark",
+		zap.Int("warehouses", b.config.Warehouses),
+		zap.Int("terminals", b.config.Terminals),
+		zap.Duration("duration", b.config.Duration),
 	)
 
+	startTime := time.Now()
+	b.runner = NewRunner(b.db, b.config)
+	stats, err := b.runner.Run(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("run: %w", err)
+	}
+	endTime := time.Now()
+
+	result := &benchmark.Result{
+		Name:              "TPC-C",
+		Duration:          endTime.Sub(startTime),
+		TotalTransactions: stats.TotalTransactions,
+		TPS:              float64(stats.TotalTransactions) / endTime.Sub(startTime).Seconds(),
+		LatencyAvg:       stats.LatencyAvg,
+		LatencyP95:       stats.LatencyP95,
+		LatencyP99:       stats.LatencyP99,
+		Errors:           stats.Errors,
+		StartTime:        startTime,
+		EndTime:          endTime,
+		Metrics:          make(map[string]interface{}),
+	}
+
+	// Convert metrics to interface{} map
+	for k, v := range stats.Metrics {
+		result.Metrics[k] = interface{}(v)
+	}
+
 	return result, nil
+}
+
+// GetStats returns the benchmark statistics
+func (b *TPCCBenchmark) GetStats() *benchmark.Result {
+	if b.runner == nil {
+		return &benchmark.Result{
+			Name:     "TPC-C",
+			Duration: time.Duration(0),
+			Metrics:  make(map[string]interface{}),
+		}
+	}
+
+	stats := b.runner.GetStats()
+	result := &benchmark.Result{
+		Name:              "TPC-C",
+		Duration:          time.Since(b.runner.startTime),
+		TotalTransactions: stats.TotalTransactions,
+		TPS:              float64(stats.TotalTransactions) / time.Since(b.runner.startTime).Seconds(),
+		LatencyAvg:       stats.LatencyAvg,
+		LatencyP95:       stats.LatencyP95,
+		LatencyP99:       stats.LatencyP99,
+		Errors:           stats.Errors,
+		StartTime:        b.runner.startTime,
+		EndTime:          time.Now(),
+		Metrics:          make(map[string]interface{}),
+	}
+
+	// Convert metrics to interface{} map
+	for k, v := range stats.Metrics {
+		result.Metrics[k] = interface{}(v)
+	}
+
+	return result
 }
 
 // Cleanup performs necessary cleanup after the benchmark
@@ -106,32 +143,11 @@ func (b *TPCCBenchmark) Validate() error {
 	if b.config == nil {
 		return fmt.Errorf("config is nil")
 	}
-
-	if b.config.Warehouses < 1 {
-		return fmt.Errorf("warehouses must be greater than 0")
+	if b.db == nil {
+		return fmt.Errorf("database connection is nil")
 	}
-
-	if b.config.Terminals < 1 {
-		return fmt.Errorf("terminals must be greater than 0")
+	if b.logger == nil {
+		return fmt.Errorf("logger is nil")
 	}
-
-	if b.config.Duration < time.Second {
-		return fmt.Errorf("duration must be at least 1 second")
-	}
-
-	if b.config.ReportInterval < time.Second {
-		return fmt.Errorf("report interval must be at least 1 second")
-	}
-
-	totalPercentage := b.config.NewOrderPercentage +
-		b.config.PaymentPercentage +
-		b.config.OrderStatusPercentage +
-		b.config.DeliveryPercentage +
-		b.config.StockLevelPercentage
-
-	if totalPercentage != 100 {
-		return fmt.Errorf("transaction percentages must sum to 100")
-	}
-
-	return nil
+	return b.config.Validate()
 }

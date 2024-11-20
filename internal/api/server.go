@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/deadjoe/benchphant/internal/benchmark"
 	"github.com/deadjoe/benchphant/internal/config"
@@ -124,7 +123,7 @@ func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var config models.ConnectionConfig
+	var config models.DBConnection
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
 		return

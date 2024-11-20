@@ -3,13 +3,15 @@ package sysbench
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/deadjoe/benchphant/internal/benchmark/sysbench/types"
+	"go.uber.org/zap"
 )
 
 // ScenarioType represents different predefined test scenarios
-type ScenarioType string
+type ScenarioType types.ScenarioType
 
 const (
 	// Common scenarios
@@ -28,66 +30,57 @@ type Scenario struct {
 	Name        string
 	Description string
 	Duration    time.Duration
-	Tests       []*ScenarioTest
-}
-
-// ScenarioTest represents a single test within a scenario
-type ScenarioTest struct {
-	Name     string
-	Type     types.TestType
-	Config   *types.OLTPTestConfig
-	Weight   float64 // Weight for mixed workloads (0-1)
-	Duration time.Duration
+	Tests       []*types.Test
 }
 
 // NewScenario creates a new test scenario
 func NewScenario(scenarioType ScenarioType) *Scenario {
 	scenario := &Scenario{
 		Type:  scenarioType,
-		Tests: make([]*ScenarioTest, 0),
+		Tests: make([]*types.Test, 0),
 	}
 
 	switch scenarioType {
 	case ScenarioTypeBasicOLTP:
 		scenario.Name = "Basic OLTP"
-		scenario.Description = "Basic OLTP workload with balanced read/write operations"
-		scenario.Duration = 30 * time.Minute
+		scenario.Description = "Basic OLTP test with balanced read/write operations"
+		scenario.Duration = 10 * time.Minute
 		scenario.addBasicOLTPTests()
 
 	case ScenarioTypeReadIntensive:
 		scenario.Name = "Read Intensive"
-		scenario.Description = "Read-intensive workload with 95% reads and 5% writes"
-		scenario.Duration = 30 * time.Minute
+		scenario.Description = "OLTP test focused on read operations"
+		scenario.Duration = 15 * time.Minute
 		scenario.addReadIntensiveTests()
 
 	case ScenarioTypeWriteHeavy:
 		scenario.Name = "Write Heavy"
-		scenario.Description = "Write-heavy workload with 70% writes and 30% reads"
-		scenario.Duration = 30 * time.Minute
+		scenario.Description = "OLTP test with high write load"
+		scenario.Duration = 15 * time.Minute
 		scenario.addWriteHeavyTests()
 
 	case ScenarioTypeMixedLoad:
 		scenario.Name = "Mixed Load"
-		scenario.Description = "Mixed workload with various query types"
-		scenario.Duration = 1 * time.Hour
+		scenario.Description = "OLTP test with mixed read/write operations"
+		scenario.Duration = 20 * time.Minute
 		scenario.addMixedLoadTests()
 
 	case ScenarioTypeHighConcurrency:
 		scenario.Name = "High Concurrency"
-		scenario.Description = "High concurrency test with many threads"
-		scenario.Duration = 15 * time.Minute
+		scenario.Description = "OLTP test with high thread count"
+		scenario.Duration = 30 * time.Minute
 		scenario.addHighConcurrencyTests()
 
 	case ScenarioTypeLongRunning:
 		scenario.Name = "Long Running"
-		scenario.Description = "Long-running stability test"
-		scenario.Duration = 24 * time.Hour
+		scenario.Description = "Extended duration OLTP test"
+		scenario.Duration = 2 * time.Hour
 		scenario.addLongRunningTests()
 
 	case ScenarioTypeStressTest:
 		scenario.Name = "Stress Test"
-		scenario.Description = "System stress test with increasing load"
-		scenario.Duration = 2 * time.Hour
+		scenario.Description = "High load stress test"
+		scenario.Duration = 1 * time.Hour
 		scenario.addStressTests()
 	}
 
@@ -97,12 +90,13 @@ func NewScenario(scenarioType ScenarioType) *Scenario {
 // addBasicOLTPTests adds tests for basic OLTP scenario
 func (s *Scenario) addBasicOLTPTests() {
 	config := types.NewOLTPTestConfig()
-	config.Threads = 8
+	config.NumThreads = 8
 	config.TableSize = 1000000
-	config.TablesCount = 4
+	config.NumTables = 4
+	config.Duration = s.Duration
 
 	s.Tests = append(s.Tests,
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Read-Write Mix",
 			Type:     types.TestTypeOLTPReadWrite,
 			Config:   config,
@@ -115,26 +109,27 @@ func (s *Scenario) addBasicOLTPTests() {
 // addReadIntensiveTests adds tests for read-intensive scenario
 func (s *Scenario) addReadIntensiveTests() {
 	config := types.NewOLTPTestConfig()
-	config.Threads = 16
+	config.NumThreads = 16
 	config.TableSize = 1000000
-	config.TablesCount = 4
+	config.NumTables = 4
+	config.Duration = s.Duration
 
 	s.Tests = append(s.Tests,
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Read Only",
 			Type:     types.TestTypeOLTPRead,
 			Config:   config,
 			Weight:   0.7,
 			Duration: s.Duration * 7 / 10,
 		},
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Point Selects",
 			Type:     types.TestTypeOLTPPointSelect,
 			Config:   config,
 			Weight:   0.25,
 			Duration: s.Duration * 25 / 100,
 		},
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Write Mix",
 			Type:     types.TestTypeOLTPReadWrite,
 			Config:   config,
@@ -147,19 +142,20 @@ func (s *Scenario) addReadIntensiveTests() {
 // addWriteHeavyTests adds tests for write-heavy scenario
 func (s *Scenario) addWriteHeavyTests() {
 	config := types.NewOLTPTestConfig()
-	config.Threads = 8
+	config.NumThreads = 8
 	config.TableSize = 500000
-	config.TablesCount = 4
+	config.NumTables = 4
+	config.Duration = s.Duration
 
 	s.Tests = append(s.Tests,
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Write Only",
 			Type:     types.TestTypeOLTPWrite,
 			Config:   config,
 			Weight:   0.7,
 			Duration: s.Duration * 7 / 10,
 		},
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Read-Write Mix",
 			Type:     types.TestTypeOLTPReadWrite,
 			Config:   config,
@@ -172,33 +168,34 @@ func (s *Scenario) addWriteHeavyTests() {
 // addMixedLoadTests adds tests for mixed load scenario
 func (s *Scenario) addMixedLoadTests() {
 	config := types.NewOLTPTestConfig()
-	config.Threads = 16
+	config.NumThreads = 16
 	config.TableSize = 1000000
-	config.TablesCount = 8
+	config.NumTables = 8
+	config.Duration = s.Duration
 
 	s.Tests = append(s.Tests,
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Point Selects",
 			Type:     types.TestTypeOLTPPointSelect,
 			Config:   config,
 			Weight:   0.3,
 			Duration: s.Duration * 3 / 10,
 		},
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Simple Ranges",
 			Type:     types.TestTypeOLTPSimpleSelect,
 			Config:   config,
 			Weight:   0.2,
 			Duration: s.Duration * 2 / 10,
 		},
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Sum Ranges",
 			Type:     types.TestTypeOLTPSumRange,
 			Config:   config,
 			Weight:   0.2,
 			Duration: s.Duration * 2 / 10,
 		},
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Write Mix",
 			Type:     types.TestTypeOLTPReadWrite,
 			Config:   config,
@@ -211,13 +208,14 @@ func (s *Scenario) addMixedLoadTests() {
 // addHighConcurrencyTests adds tests for high concurrency scenario
 func (s *Scenario) addHighConcurrencyTests() {
 	config := types.NewOLTPTestConfig()
-	config.Threads = 64
+	config.NumThreads = 32
 	config.TableSize = 1000000
-	config.TablesCount = 16
+	config.NumTables = 4
+	config.Duration = s.Duration
 
 	s.Tests = append(s.Tests,
-		&ScenarioTest{
-			Name:     "Read-Write High Concurrency",
+		&types.Test{
+			Name:     "High Concurrency Mix",
 			Type:     types.TestTypeOLTPReadWrite,
 			Config:   config,
 			Weight:   1.0,
@@ -229,12 +227,13 @@ func (s *Scenario) addHighConcurrencyTests() {
 // addLongRunningTests adds tests for long-running scenario
 func (s *Scenario) addLongRunningTests() {
 	config := types.NewOLTPTestConfig()
-	config.Threads = 32
-	config.TableSize = 5000000
-	config.TablesCount = 8
+	config.NumThreads = 16
+	config.TableSize = 1000000
+	config.NumTables = 4
+	config.Duration = s.Duration
 
 	s.Tests = append(s.Tests,
-		&ScenarioTest{
+		&types.Test{
 			Name:     "Long Running Mix",
 			Type:     types.TestTypeOLTPReadWrite,
 			Config:   config,
@@ -246,56 +245,57 @@ func (s *Scenario) addLongRunningTests() {
 
 // addStressTests adds tests for stress testing scenario
 func (s *Scenario) addStressTests() {
-	baseConfig := types.NewOLTPTestConfig()
-	baseConfig.TableSize = 1000000
-	baseConfig.TablesCount = 8
+	config := types.NewOLTPTestConfig()
+	config.NumThreads = 64
+	config.TableSize = 2000000
+	config.NumTables = 8
+	config.Duration = s.Duration
 
-	// Add tests with increasing thread counts
-	threadCounts := []int{8, 16, 32, 64, 128}
-	duration := s.Duration / time.Duration(len(threadCounts))
-
-	for _, threads := range threadCounts {
-		config := *baseConfig
-		config.Threads = threads
-		s.Tests = append(s.Tests,
-			&ScenarioTest{
-				Name:     fmt.Sprintf("Stress Test (%d threads)", threads),
-				Type:     types.TestTypeOLTPReadWrite,
-				Config:   &config,
-				Weight:   1.0 / float64(len(threadCounts)),
-				Duration: duration,
-			},
-		)
-	}
+	s.Tests = append(s.Tests,
+		&types.Test{
+			Name:     "Stress Test Mix",
+			Type:     types.TestTypeOLTPReadWrite,
+			Config:   config,
+			Weight:   1.0,
+			Duration: s.Duration,
+		},
+	)
 }
 
-// Run executes all tests in the scenario
-func (s *Scenario) Run(ctx context.Context) ([]*types.Report, error) {
-	reports := make([]*types.Report, 0, len(s.Tests))
+// Run executes the scenario
+func (s *Scenario) Run(ctx context.Context, db *sql.DB, logger *zap.Logger) ([]*types.Report, error) {
+	var reports []*types.Report
 
-	for _, test := range s.Tests {
-		// Create test context with duration limit
-		testCtx, cancel := context.WithTimeout(ctx, test.Duration)
-		defer cancel()
+	// Create test configuration
+	config := types.NewOLTPTestConfig()
+	config.TestType = types.TestType(s.Type)
+	config.Duration = s.Duration
+	config.NumThreads = 8
+	config.NumTables = 4
+	config.TableSize = 1000000
 
-		// Create and prepare test
-		oltpTest := types.NewOLTPTest(test.Config)
-		if err := oltpTest.Prepare(testCtx); err != nil {
-			return reports, fmt.Errorf("failed to prepare test %s: %w", test.Name, err)
-		}
+	// Create test
+	test := NewOLTPTest(config)
+	test.SetDB(db)
+	test.SetLogger(logger)
 
-		// Run test
-		report, err := oltpTest.Run(testCtx)
-		if err != nil {
-			return reports, fmt.Errorf("failed to run test %s: %w", test.Name, err)
-		}
+	// Prepare test
+	if err := test.Prepare(ctx); err != nil {
+		return nil, fmt.Errorf("prepare test failed: %w", err)
+	}
 
-		// Clean up test
-		if err := oltpTest.Cleanup(testCtx); err != nil {
-			return reports, fmt.Errorf("failed to clean up test %s: %w", test.Name, err)
-		}
+	// Run test
+	if err := test.Run(ctx); err != nil {
+		return nil, fmt.Errorf("run test failed: %w", err)
+	}
 
-		reports = append(reports, report)
+	// Get report
+	report := test.GetReport()
+	reports = append(reports, report)
+
+	// Clean up
+	if err := test.Cleanup(ctx); err != nil {
+		return nil, fmt.Errorf("cleanup test failed: %w", err)
 	}
 
 	return reports, nil
@@ -303,61 +303,22 @@ func (s *Scenario) Run(ctx context.Context) ([]*types.Report, error) {
 
 // GetPredefinedScenarios returns a list of predefined test scenarios
 func GetPredefinedScenarios() []Scenario {
-	return []Scenario{
-		{
-			Type:        ScenarioTypeBasicOLTP,
-			Name:        "basic_oltp",
-			Description: "Basic OLTP test with balanced read/write operations",
-			Duration:    10 * time.Minute,
-		},
-		{
-			Type:        ScenarioTypeReadIntensive,
-			Name:        "read_intensive",
-			Description: "OLTP test focused on read operations",
-			Duration:    15 * time.Minute,
-		},
-		{
-			Type:        ScenarioTypeWriteHeavy,
-			Name:        "write_heavy",
-			Description: "OLTP test with high write load",
-			Duration:    15 * time.Minute,
-		},
-		{
-			Type:        ScenarioTypeMixedLoad,
-			Name:        "mixed_load",
-			Description: "OLTP test with mixed read/write operations",
-			Duration:    20 * time.Minute,
-		},
-		{
-			Type:        ScenarioTypeHighConcurrency,
-			Name:        "high_concurrency",
-			Description: "OLTP test with high thread count",
-			Duration:    30 * time.Minute,
-		},
-		{
-			Type:        ScenarioTypeLongRunning,
-			Name:        "long_running",
-			Description: "Extended duration OLTP test",
-			Duration:    2 * time.Hour,
-		},
-		{
-			Type:        ScenarioTypeStressTest,
-			Name:        "stress_test",
-			Description: "High load stress test",
-			Duration:    1 * time.Hour,
-		},
+	scenarios := []Scenario{
+		*NewScenario(ScenarioTypeBasicOLTP),
+		*NewScenario(ScenarioTypeReadIntensive),
+		*NewScenario(ScenarioTypeWriteHeavy),
+		*NewScenario(ScenarioTypeMixedLoad),
+		*NewScenario(ScenarioTypeHighConcurrency),
+		*NewScenario(ScenarioTypeLongRunning),
+		*NewScenario(ScenarioTypeStressTest),
 	}
+
+	return scenarios
 }
 
 // GetScenarioByType returns a predefined scenario by its type
 func GetScenarioByType(scenarioType ScenarioType) (*Scenario, error) {
-	scenarios := GetPredefinedScenarios()
-	for _, s := range scenarios {
-		if s.Type == scenarioType {
-			return &s, nil
-		}
-	}
-	return nil, fmt.Errorf("scenario type %s not found", scenarioType)
+	return NewScenario(scenarioType), nil
 }
 
 // GetScenarioByName returns a predefined scenario by its name
@@ -365,8 +326,9 @@ func GetScenarioByName(name string) (*Scenario, error) {
 	scenarios := GetPredefinedScenarios()
 	for _, s := range scenarios {
 		if s.Name == name {
-			return &s, nil
+			scenario := s
+			return &scenario, nil
 		}
 	}
-	return nil, fmt.Errorf("scenario with name %s not found", name)
+	return nil, fmt.Errorf("scenario not found: %s", name)
 }
