@@ -1,14 +1,14 @@
 # Benchphant
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/joe/benchphant)](https://goreportcard.com/report/github.com/joe/benchphant)
-[![GoDoc](https://pkg.go.dev/badge/github.com/joe/benchphant)](https://pkg.go.dev/github.com/joe/benchphant)
+[![Go Report Card](https://goreportcard.com/badge/github.com/deadjoe/benchphant)](https://goreportcard.com/report/github.com/deadjoe/benchphant)
+[![GoDoc](https://pkg.go.dev/badge/github.com/deadjoe/benchphant)](https://pkg.go.dev/github.com/deadjoe/benchphant)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Build Status](https://github.com/joe/benchphant/actions/workflows/test.yml/badge.svg)](https://github.com/joe/benchphant/actions)
-[![Lint Status](https://github.com/joe/benchphant/actions/workflows/lint.yml/badge.svg)](https://github.com/joe/benchphant/actions)
-[![codecov](https://codecov.io/gh/joe/benchphant/branch/main/graph/badge.svg)](https://codecov.io/gh/joe/benchphant)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/joe/benchphant)](https://github.com/joe/benchphant)
-[![Release](https://img.shields.io/github/v/release/joe/benchphant)](https://github.com/joe/benchphant/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/joe/benchphant)](https://hub.docker.com/r/joe/benchphant)
+[![Build Status](https://github.com/deadjoe/benchphant/actions/workflows/test.yml/badge.svg)](https://github.com/deadjoe/benchphant/actions)
+[![Lint Status](https://github.com/deadjoe/benchphant/actions/workflows/lint.yml/badge.svg)](https://github.com/deadjoe/benchphant/actions)
+[![codecov](https://codecov.io/gh/deadjoe/benchphant/branch/main/graph/badge.svg)](https://codecov.io/gh/deadjoe/benchphant)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/deadjoe/benchphant)](https://github.com/deadjoe/benchphant)
+[![Release](https://img.shields.io/github/v/release/deadjoe/benchphant)](https://github.com/deadjoe/benchphant/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/deadjoe/benchphant)](https://hub.docker.com/r/deadjoe/benchphant)
 
 <div align="center">
   <img src="docs/assets/logo.png" alt="Benchphant Logo" width="200">
@@ -45,14 +45,14 @@ Benchphant is a modern, user-friendly database stress testing tool that supports
 #### Using Go
 
 ```bash
-go install github.com/joe/benchphant@latest
+go install github.com/deadjoe/benchphant@latest
 ```
 
 #### Using Docker
 
 ```bash
-docker pull joe/benchphant
-docker run -p 8080:8080 joe/benchphant
+docker pull deadjoe/benchphant
+docker run -p 8080:8080 deadjoe/benchphant
 ```
 
 ### Running Locally
@@ -133,4 +133,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=joe/benchphant&type=Date)](https://star-history.com/#joe/benchphant&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=deadjoe/benchphant&type=Date)](https://star-history.com/#deadjoe/benchphant&Date)

@@ -54,7 +54,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 git clone https://github.com/YOUR_USERNAME/benchphant.git
 
 # Add upstream remote
-git remote add upstream https://github.com/joe/benchphant.git
+git remote add upstream https://github.com/deadjoe/benchphant.git
 
 # Install dependencies
 go mod download
